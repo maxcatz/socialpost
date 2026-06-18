@@ -15,16 +15,27 @@ export async function publishToTelegram(post: PostData, accounts: TelegramConfig
             continue; // Переходим к следующему аккаунту
         }
         try {
+            // SCENARIO 1: No image - use sendMessage
+            if (!imageBuffer) {
+                const url = `https://api.telegram.org/bot${token}/sendMessage`;
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ chat_id: acc.chatId, text: post.content })
+                });
+                const result = await res.json() as any;
+                if (!result.ok) console.error(`❌ Error [${acc.name}]:`, result.description);
+                else console.log(`✅ Text posted to [${acc.name}]`);
+                continue;
+            }
+
             if (post.content.length <= 1024) {
                 // Option 1: Short text. Send everything together (photo + caption)
                 const url = `https://api.telegram.org/bot${token}/sendPhoto`;
                 const formData = new FormData();
                 formData.append('chat_id', acc.chatId);
                 formData.append('caption', post.content);
-
-                if (imageBuffer) {
-                    formData.append('photo', new Blob([imageBuffer]), 'image.jpg');
-                }
+                formData.append('photo', new Blob([imageBuffer]), 'image.jpg');
 
                 const res = await fetch(url, { method: 'POST', body: formData as any });
                 const result = await res.json() as any;
