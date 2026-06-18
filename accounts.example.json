@@ -1,0 +1,11 @@
+{
+  "telegram": [
+    { "name": "Main Channel", "tokenEnv": "YOUR_TG_BOT_TOKEN_ENV_HERE", "chatId": "YOUR_TG_CHAT_ID_HERE" }
+  ],
+  "facebook": [
+    { "name": "Public Page", "tokenEnv": "YOUR_FB_PAGE_TOKEN_ENV_HERE", "pageId": "YOUR_FB_PAGE_ID_HERE" }
+  ],
+  "youtube": [
+    { "name": "Main Channel", "channelHandle": "@yourchannel" }
+  ]
+}

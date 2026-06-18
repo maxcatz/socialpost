@@ -5,13 +5,16 @@
   "type": "module",
   "scripts": {
     "start-js": "node --env-file=.env publishOld.js",
-    "start": "node --env-file=.env -r ts-node publish.ts"
+    "start-old": "node --env-file=.env -r ts-node publish.ts",
+    "start-1": "node --env-file=.env --loader ts-node/esm ts-node src/index.ts",
+    "start": "node --env-file=.env --import tsx src/index.ts"
   },
   "volta": {
     "node": "24.17.0",
     "yarn": "4.17.0"
   },
   "dependencies": {
+    "@inquirer/prompts": "^8.5.2",
     "clipboardy": "^5.3.1",
     "gray-matter": "^4.0.3",
     "open": "^11.0.0"

@@ -185,6 +185,6 @@ if (!filePath) {
   console.error('Укажите путь к файлу!');
   process.exit(1);
 }
-// publishFacebookPost(filePath);
+publishFacebookPost(filePath);
 publishToTelegram(filePath);
-//prepareYouTubePost(filePath);
+prepareYouTubePost(filePath);
