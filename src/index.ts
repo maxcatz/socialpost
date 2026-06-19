@@ -6,7 +6,7 @@ import { parsePost } from './parser.js';
 import { publishFacebookPost } from './publishers/facebook.js';
 import { publishToTelegram } from './publishers/telegram.js';
 import { prepareYouTubePost } from './publishers/youtube.js';
-import {AccountsConfig, PublishResult} from './types.js';
+import {AccountsConfig, FacebookConfig, PublishResult, TelegramConfig, WhatsAppConfig, YouTubeConfig} from './types.js';
 import {publishToWhatsAppGroup} from "./publishers/whatsapp";
 
 // Тип для хранения информации о выбранном аккаунте
@@ -15,6 +15,37 @@ interface SelectedAccount {
     index: number;
 }
 
+async function selectAccounts(accounts: AccountsConfig): Promise<SelectedAccount[]> {
+    const promptChoices: any[] = [];
+
+    // Helper для добавления аккаунтов в меню
+    const addChoices = (platform: string, list: any[]) => {
+        if (!list || list.length === 0) return;
+        promptChoices.push(new Separator(`── ${platform.toUpperCase()} ──`));
+        list.forEach((acc, index) => {
+            promptChoices.push({ name: `${platform} - ${acc.name}`, value: { platform, index }, checked: true });
+        });
+    };
+
+    addChoices('telegram', accounts.telegram);
+    addChoices('facebook', accounts.facebook);
+    addChoices('youtube', accounts.youtube);
+    addChoices('whatsapp', accounts.whatsapp);
+
+    if (promptChoices.length === 0) throw new Error('No accounts found in accounts.json!');
+
+    const selected = await checkbox<SelectedAccount>({
+        message: 'Select specific accounts to publish to:',
+        choices: promptChoices,
+        loop: false,
+    });
+
+    if (selected.length === 0) throw new Error('NO_SELECTION');
+    return selected;
+}
+
+
+
 async function main() {
     const filePath = process.argv[2];
     if (!filePath) {
@@ -22,125 +53,44 @@ async function main() {
         process.exit(1);
     }
 
-    // Загрузка конфигурации аккаунтов
-    const configPath = path.resolve('./accounts.json');
-    if (!fs.existsSync(configPath)) {
-        console.error('❌ Error: accounts.json file not found!');
-        process.exit(1);
-    }
-
-    const accounts: AccountsConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-
-    // Динамически формируем список для выбора
-    const promptChoices: any[] = [];
-
-    if (accounts.telegram && accounts.telegram.length > 0) {
-        promptChoices.push(new Separator('── Telegram ──'));
-        accounts.telegram.forEach((acc, index) => {
-            promptChoices.push({
-                name: `Telegram - ${acc.name}`,
-                value: { platform: 'telegram', index },
-                checked: true,
-            });
-        });
-    }
-
-    if (accounts.facebook && accounts.facebook.length > 0) {
-        promptChoices.push(new Separator('── Facebook ──'));
-        accounts.facebook.forEach((acc, index) => {
-            promptChoices.push({
-                name: `Facebook - ${acc.name}`,
-                value: { platform: 'facebook', index },
-                checked: true,
-            });
-        });
-    }
-
-    if (accounts.youtube && accounts.youtube.length > 0) {
-        promptChoices.push(new Separator('── YouTube ──'));
-        accounts.youtube.forEach((acc, index) => {
-            promptChoices.push({
-                name: `YouTube - ${acc.name}`,
-                value: { platform: 'youtube', index },
-                checked: true,
-            });
-        });
-    }
-
-    if (accounts.whatsapp && accounts.whatsapp.length > 0) {
-        promptChoices.push(new Separator('── WhatsApp ──'));
-        accounts.whatsapp.forEach((acc, index) => {
-            promptChoices.push({ name: `WhatsApp - ${acc.name}`, value: { platform: 'whatsapp', index }, checked: true });
-        });
-    }
-
-    if (promptChoices.length === 0) {
-        console.error('❌ Error: No accounts found in accounts.json!');
-        process.exit(1);
-    }
+    const accounts: AccountsConfig = JSON.parse(fs.readFileSync(path.resolve('./accounts.json'), 'utf8'));
 
     try {
-        // 1. Интерактивный вопрос пользователю
-        const selectedAccounts = await checkbox<SelectedAccount>({
-            message: 'Select specific accounts to publish to:',
-            choices: promptChoices,
-            loop: false, // Отключает зацикливание списка при скролле (удобнее для длинных списков)
-        });
-
-        if (selectedAccounts.length === 0) {
-            console.log('\n⚠️ No accounts selected. Exiting...');
-            process.exit(0);
-        }
-
-        // 2. Группируем выбранные аккаунты обратно по платформам
-        const selectedTelegram = selectedAccounts
-            .filter(s => s.platform === 'telegram')
-            .map(s => accounts.telegram[s.index]);
-
-        const selectedFacebook = selectedAccounts
-            .filter(s => s.platform === 'facebook')
-            .map(s => accounts.facebook[s.index]);
-
-        const selectedYouTube = selectedAccounts
-            .filter(s => s.platform === 'youtube')
-            .map(s => accounts.youtube[s.index]);
-
-        const selectedWhatsApp = selectedAccounts
-            .filter(s => s.platform === 'whatsapp')
-            .map(s => accounts.whatsapp[s.index]);
-
-        // 3. Парсим файл
-        console.log(`\n📄 Processing file: ${filePath}`);
+        const selectedAccounts = await selectAccounts(accounts);
         const postData = parsePost(filePath);
 
+        // Формируем список задач (Promises)
+        const tasks: Promise<PublishResult[]>[] = selectedAccounts.map(s => {
+            const acc = accounts[s.platform as keyof AccountsConfig][s.index];
 
-        const results: PublishResult[] = [];
-        // 4. Публикуем (передаем только отфильтрованные массивы аккаунтов)
-        if (selectedFacebook.length > 0) {
-            results.push( ... await publishFacebookPost(postData, selectedFacebook));
-        }
+            // Динамический вызов паблишера
+            if (s.platform === 'facebook') return publishFacebookPost(postData, acc as FacebookConfig);
+            if (s.platform === 'telegram') return publishToTelegram(postData, acc as TelegramConfig);
+            if (s.platform === 'youtube') return prepareYouTubePost(postData, filePath, acc as YouTubeConfig);
+            if (s.platform === 'whatsapp') return publishToWhatsAppGroup(postData, acc as WhatsAppConfig);
 
-        if (selectedTelegram.length > 0) {
-            results.push( ... await publishToTelegram(postData, selectedTelegram));
-        }
+            return Promise.resolve([]);
+        });
 
-        if (selectedYouTube.length > 0) {
-            results.push( ... await prepareYouTubePost(postData, filePath, selectedYouTube));
-        }
+        // 3. Публикуем всё параллельно
+        console.log(`\n🚀 Publishing...`);
+        const results = (await Promise.all(tasks)).flat();
 
-        for (const acc of selectedWhatsApp) {
-            results.push( ... await publishToWhatsAppGroup(postData, acc));
-        }
+        // 4. Генерация отчета
+        const reportText = [
+            `\n🎉 All tasks completed!`,
+            ...results.map(r => `• ${r.platform} (${r.name}): ${r.url || 'Failed'}`)
+        ].join('\n');
 
-        const reportLinks = results.map(r => `• ${r.platform} (${r.name}): ${r.url || 'Failed'}`).join('\n');
+        console.log(reportText);
 
-        console.log(`All tasks completed successfully!\n${reportLinks}`);
+        // Если в списке были WhatsApp, можно продублировать туда отчет
+        // (логика отправки отчета в WA можно вызвать здесь)
+
     } catch (error: any) {
-        if (error.name === 'ExitPromptError') {
-            console.log('\n🚪 Process cancelled by user.');
-        } else {
-            console.error('\n❌ A critical error occurred:', error.message);
-        }
+        if (error.message === 'NO_SELECTION') console.log('\n⚠️ No accounts selected. Exiting...');
+        else if (error.name === 'ExitPromptError') console.log('\n🚪 Process cancelled by user.');
+        else console.error('\n❌ A critical error occurred:', error.message);
     }
 }
 

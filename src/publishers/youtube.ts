@@ -4,9 +4,7 @@ import {PostData, PublishResult, YouTubeConfig} from '../types.js';
 import { revealFileInFinder } from '../utils.js';
 import { input } from '@inquirer/prompts';
 
-export async function prepareYouTubePost(post: PostData, filePath: string, accounts: YouTubeConfig[]) {
-    const results: PublishResult[] = [];
-    if (accounts.length === 0) return results;
+export async function prepareYouTubePost(post: PostData, filePath: string, account: YouTubeConfig):Promise<PublishResult> {
 
     console.log('\n▶ Preparing posts for YouTube...');
 
@@ -19,10 +17,9 @@ export async function prepareYouTubePost(post: PostData, filePath: string, accou
     }
 
     // Open community tabs for all configured channels
-    for (const acc of accounts) {
-        const communityUrl = `https://www.youtube.com/${acc.channelHandle}/posts`;
+        const communityUrl = `https://www.youtube.com/${account.channelHandle}/posts`;
         await open(communityUrl);
-        console.log(`✅ Opened posts tab for: [${acc.name}] (${acc.channelHandle})`);
+        console.log(`✅ Opened posts tab for: [${account.name}] (${account.channelHandle})`);
 
         console.log('\n=========================================');
         console.log('✅ Post text successfully copied to clipboard!');
@@ -34,10 +31,8 @@ export async function prepareYouTubePost(post: PostData, filePath: string, accou
         console.log('4. Click "Post".');
         console.log('5. Once published, click "Share" or the post timestamp to copy the post URL.\n');
         const postUrl = await input({
-            message: `Paste the URL for the published post on [${acc.name}]:`,
+            message: `Paste the URL for the published post on [${account.name}]:`,
             validate: (value) => value.trim() !== '' || 'URL cannot be empty',
         });
-        results.push({ platform: 'YouTube', name: acc.name, url: postUrl.trim() });
-    }
-    return results;
+       return  { platform: 'YouTube', name: account.name, url: postUrl.trim() };
 }
