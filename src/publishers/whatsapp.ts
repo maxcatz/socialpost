@@ -1,39 +1,23 @@
-import open from 'open';
-import clipboardy from 'clipboardy';
-import { PostData } from '../types.js';
-import {input} from "@inquirer/prompts";
-import {revealFileInFinder} from "../utils";
+import { PostData, PublishResult, WhatsAppConfig } from '../types.js';
+import { publishManual, RunSafe } from './common.js';
 
-export async function publishToWhatsAppGroup(post: PostData, account: { name: string, inviteLink: string }) {
-    console.log(`\n▶ Preparing WhatsApp for: [${account.name}]...`);
+export class WhatsAppPublisher {
+    @RunSafe('WhatsApp')
+    static async publish(post: PostData, account: WhatsAppConfig): Promise<PublishResult> {
+        const instructions = [
+            'The WhatsApp app should now be in focus.',
+            'Press Cmd+V to paste the text.',
+            ...(post.image || post.video ? ['Media found. You may need to drag it manually.'] : []),
+            'Press Enter to send.',
+            'Once published, click "Share" or the post timestamp to copy the post URL.'
+        ];
 
-    // 1. Копируем текст поста в буфер обмена
-    clipboardy.writeSync(post.content);
-
-    // 2. Открываем ссылку.
-    // macOS автоматически переключит фокус на WhatsApp Desktop, если он запущен.
-    await open(account.inviteLink);
-
-    if (post.image) {
-        await revealFileInFinder(post.image);
-    } else if (post.video) {
-        await revealFileInFinder(post.video);
+        return publishManual({
+            platform: 'WhatsApp',
+            accountName: account.name,
+            urlToOpen: account.inviteLink,
+            instructions,
+            post
+        });
     }
-
-    console.log(`✅ Opened WhatsApp group: ${account.name}`);
-    console.log('-----------------------------------------');
-    console.log('Next steps:');
-    console.log('1. The WhatsApp app should now be in focus.');
-    console.log('2. Press Cmd+V to paste the text.');
-    if (post.image || post.video) {
-        console.log(`   2.1. Media found. You may need to drag it manually.`);
-    }
-    console.log('3. Press Enter to send.');
-    console.log('4. Once published, click "Share" or the post timestamp to copy the post URL.\n');
-    const postUrl = await input({
-        message: `Paste the URL for the published post on [${account.name}]:`,
-        validate: (value) => value.trim() !== '' || 'URL cannot be empty',
-    });
-    console.log('-----------------------------------------\n');
-    return { platform: 'WhatsApp', name: account.name, url: postUrl.trim() };
 }

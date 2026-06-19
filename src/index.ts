@@ -3,11 +3,11 @@ import path from 'node:path';
 import process from 'node:process';
 import { checkbox, Separator } from '@inquirer/prompts';
 import { parsePost } from './parser.js';
-import { publishFacebookPost } from './publishers/facebook.js';
-import { publishToTelegram } from './publishers/telegram.js';
-import { prepareYouTubePost } from './publishers/youtube.js';
+import { FacebookPublisher } from './publishers/facebook.js';
+import { TelegramPublisher } from './publishers/telegram.js';
+import { YouTubePublisher } from './publishers/youtube.js';
 import {AccountsConfig, FacebookConfig, PublishResult, TelegramConfig, WhatsAppConfig, YouTubeConfig} from './types.js';
-import {publishToWhatsAppGroup} from "./publishers/whatsapp";
+import { WhatsAppPublisher } from "./publishers/whatsapp.js";
 
 // Тип для хранения информации о выбранном аккаунте
 interface SelectedAccount {
@@ -60,21 +60,21 @@ async function main() {
         const postData = parsePost(filePath);
 
         // Формируем список задач (Promises)
-        const tasks: Promise<PublishResult[]>[] = selectedAccounts.map(s => {
+        const tasks: Promise<PublishResult>[] = selectedAccounts.map(s => {
             const acc = accounts[s.platform as keyof AccountsConfig][s.index];
 
             // Динамический вызов паблишера
-            if (s.platform === 'facebook') return publishFacebookPost(postData, acc as FacebookConfig);
-            if (s.platform === 'telegram') return publishToTelegram(postData, acc as TelegramConfig);
-            if (s.platform === 'youtube') return prepareYouTubePost(postData, filePath, acc as YouTubeConfig);
-            if (s.platform === 'whatsapp') return publishToWhatsAppGroup(postData, acc as WhatsAppConfig);
+            if (s.platform === 'facebook') return FacebookPublisher.publish(postData, acc as FacebookConfig);
+            if (s.platform === 'telegram') return TelegramPublisher.publish(postData, acc as TelegramConfig);
+            if (s.platform === 'youtube') return YouTubePublisher.publish(postData, filePath, acc as YouTubeConfig);
+            if (s.platform === 'whatsapp') return WhatsAppPublisher.publish(postData, acc as WhatsAppConfig);
 
-            return Promise.resolve([]);
+            throw new Error(`Unsupported platform: ${s.platform}`);
         });
 
         // 3. Публикуем всё параллельно
         console.log(`\n🚀 Publishing...`);
-        const results = (await Promise.all(tasks)).flat();
+        const results = await Promise.all(tasks);
 
         // 4. Генерация отчета
         const reportText = [
