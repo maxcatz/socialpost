@@ -1,8 +1,9 @@
 import fs from 'node:fs';
-import { PostData, FacebookConfig } from '../types.js';
+import {PostData, FacebookConfig, PublishResult} from '../types.js';
 
-export async function publishFacebookPost(post: PostData, accounts: FacebookConfig[]) {
-    if (accounts.length === 0) return;
+export async function publishFacebookPost(post: PostData, accounts: FacebookConfig[]) : Promise<PublishResult[]> {
+    const results: PublishResult[] = [];
+    if (accounts.length === 0) return results;
 
     const message = `${post.content}\n\n${post.facebook_tags || ''}`.trim();
     const imageBuffer = post.image ? fs.readFileSync(post.image) : undefined;
@@ -36,8 +37,11 @@ export async function publishFacebookPost(post: PostData, accounts: FacebookConf
                 console.log(`✅ Success! Post ID: ${result.id || result.post_id}`);
                 console.log(`🔗 Link: https://facebook.com/${acc.pageId}/posts/${result.id || result.post_id}`);
             }
+            const postUrl = result.id ? `https://facebook.com/${acc.pageId}/posts/${result.id}` : null;
+            results.push({ platform: 'Facebook', name: acc.name, url });
         } catch (error: any) {
             console.error(`❌ System error in Facebook publisher [${acc.name}]:`, error.message);
         }
     }
+    return results;
 }

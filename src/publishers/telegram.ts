@@ -1,8 +1,10 @@
 import fs from 'node:fs';
-import { PostData, TelegramConfig } from '../types.js';
+import {PostData, PublishResult, TelegramConfig} from '../types.js';
 
-export async function publishToTelegram(post: PostData, accounts: TelegramConfig[]) {
-    if (accounts.length === 0) return;
+export async function publishToTelegram(post: PostData, accounts: TelegramConfig[]): Promise<PublishResult[]> {
+    const results: PublishResult[] = [];
+    if (accounts.length === 0) return results;
+
 
     const imageBuffer = post.image ? fs.readFileSync(post.image) : undefined;
 
@@ -24,12 +26,13 @@ export async function publishToTelegram(post: PostData, accounts: TelegramConfig
                     body: JSON.stringify({ chat_id: acc.chatId, text: post.content })
                 });
                 const result = await res.json() as any;
-                if (!result.ok) console.error(`❌ Error [${acc.name}]:`, result.description);
-                else console.log(`✅ Text posted to [${acc.name}]`);
-                continue;
-            }
-
-            if (post.content.length <= 1024) {
+                if (!result.ok) { console.error(`❌ Error [${acc.name}]:`, result.description);}
+                else {
+                    console.log(`✅ Text posted to [${acc.name}]. Link: https://t.me/${acc.channelName}/${result.result.message_id}`);
+                    const postUrl = result.result.message_id ? `https://t.me/${acc.channelName}/${result.result.message_id}` : null;
+                    results.push({platform: 'Telegram', name: acc.name, url: postUrl});
+                }
+            } else if (post.content.length <= 1024) {
                 // Option 1: Short text. Send everything together (photo + caption)
                 const url = `https://api.telegram.org/bot${token}/sendPhoto`;
                 const formData = new FormData();
@@ -41,7 +44,11 @@ export async function publishToTelegram(post: PostData, accounts: TelegramConfig
                 const result = await res.json() as any;
 
                 if (!result.ok) console.error(`❌ Telegram Error [${acc.name}]:`, result.description);
-                else console.log(`✅ Post successfully published to [${acc.name}]`);
+                else {
+                    console.log(`✅ Text posted to [${acc.name}]. Link: https://t.me/${acc.channelName}/${result.result.message_id}`);
+                    const postUrl = result.result.message_id ? `https://t.me/${acc.channelName}/${result.result.message_id}` : null;
+                    results.push({platform: 'Telegram', name: acc.name, url: postUrl});
+                }
 
             } else if (imageBuffer) {
                 // Option 2: Text is longer than 1024 chars. Send text first, then photo as a reply.
@@ -74,10 +81,15 @@ export async function publishToTelegram(post: PostData, accounts: TelegramConfig
                 const photoResult = await photoRes.json() as any;
 
                 if (!photoResult.ok) console.error(`❌ Error sending photo reply [${acc.name}]:`, photoResult.description);
-                else console.log(`✅ Text and photo reply successfully sent to [${acc.name}]`);
+                else {
+                    console.log(`✅ Text posted to [${acc.name}]. Link: https://t.me/${acc.channelName}/${photoResult.result.message_id}`);
+                    const postUrl = photoResult.result.message_id ? `https://t.me/${acc.channelName}/${photoResult.result.message_id}` : null;
+                    results.push({platform: 'Telegram', name: acc.name, url: postUrl});
+                }
             }
         } catch (error: any) {
             console.error(`❌ System error in Telegram publisher [${acc.name}]:`, error.message);
         }
     }
+    return  results;
 }

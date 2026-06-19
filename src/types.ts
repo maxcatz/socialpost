@@ -8,13 +8,14 @@ export interface PostData {
 export interface TelegramConfig {
     name: string;
     chatId: string;
-    tokenEnv: string; // Имя переменной из .env
+    tokenEnv: string;
+    channelName: string;
 }
 
 export interface FacebookConfig {
     name: string;
     pageId: string;
-    tokenEnv: string; // Имя переменной из .env
+    tokenEnv: string;
 }
 
 export interface YouTubeConfig {
@@ -31,4 +32,10 @@ export interface AccountsConfig {
     facebook: FacebookConfig[];
     youtube: YouTubeConfig[];
     whatsapp: WhatsAppConfig[];
+}
+
+export interface PublishResult {
+    platform: string;
+    name: string;
+    url: string | null;
 }

@@ -6,7 +6,7 @@ import { parsePost } from './parser.js';
 import { publishFacebookPost } from './publishers/facebook.js';
 import { publishToTelegram } from './publishers/telegram.js';
 import { prepareYouTubePost } from './publishers/youtube.js';
-import { AccountsConfig } from './types.js';
+import {AccountsConfig, PublishResult} from './types.js';
 import {publishToWhatsAppGroup} from "./publishers/whatsapp";
 
 // Тип для хранения информации о выбранном аккаунте
@@ -113,24 +113,28 @@ async function main() {
         console.log(`\n📄 Processing file: ${filePath}`);
         const postData = parsePost(filePath);
 
+
+        const results: PublishResult[] = [];
         // 4. Публикуем (передаем только отфильтрованные массивы аккаунтов)
         if (selectedFacebook.length > 0) {
-            await publishFacebookPost(postData, selectedFacebook);
+            results.push( ... await publishFacebookPost(postData, selectedFacebook));
         }
 
         if (selectedTelegram.length > 0) {
-            await publishToTelegram(postData, selectedTelegram);
+            results.push( ... await publishToTelegram(postData, selectedTelegram));
         }
 
         if (selectedYouTube.length > 0) {
-            await prepareYouTubePost(postData, filePath, selectedYouTube);
+            results.push( ... await prepareYouTubePost(postData, filePath, selectedYouTube));
         }
 
         for (const acc of selectedWhatsApp) {
-            await publishToWhatsAppGroup(postData, acc);
+            results.push( ... await publishToWhatsAppGroup(postData, acc));
         }
 
-        console.log('\n🎉 All tasks completed successfully!');
+        const reportLinks = results.map(r => `• ${r.platform} (${r.name}): ${r.url || 'Failed'}`).join('\n');
+
+        console.log(`All tasks completed successfully!\n${reportLinks}`);
     } catch (error: any) {
         if (error.name === 'ExitPromptError') {
             console.log('\n🚪 Process cancelled by user.');
