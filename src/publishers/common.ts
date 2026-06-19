@@ -16,14 +16,26 @@ export function getEnvToken(tokenEnv: string): string {
     return token;
 }
 
+export interface MediaData {
+    type: 'image' | 'video';
+    buffer: Buffer;
+}
+
 /**
- * Reads media files if they are specified in the post.
+ * Reads the media attachment if present in the post.
+ * A post can have either a video or an image.
  */
-export function getMediaBuffers(post: PostData) {
-    return {
-        imageBuffer: post.image ? fs.readFileSync(post.image) : undefined,
-        videoBuffer: post.video ? fs.readFileSync(post.video) : undefined,
-    };
+export function getMedia(post: PostData): MediaData | null {
+    if (post.video && post.image) {
+        throw new Error('The post front-matter contains both an image and a video. Please specify only one media format.');
+    }
+    if (post.video) {
+        return { type: 'video', buffer: fs.readFileSync(post.video) };
+    }
+    if (post.image) {
+        return { type: 'image', buffer: fs.readFileSync(post.image) };
+    }
+    return null;
 }
 
 /**

@@ -1,12 +1,11 @@
 import { PostData, FacebookConfig, PublishResult } from '../types.js';
-import { getEnvToken, getMediaBuffers, RunSafe } from './common.js';
+import { getEnvToken, getMedia, RunSafe } from './common.js';
 
 export class FacebookPublisher {
     @RunSafe('Facebook')
     static async publish(post: PostData, account: FacebookConfig): Promise<PublishResult> {
         const message = `${post.content}\n\n${post.facebook_tags || ''}`.trim();
-        const { imageBuffer, videoBuffer } = getMediaBuffers(post);
-        const endpoint = post.video ? 'videos' : post.image ? 'photos' : 'feed';
+        const media = getMedia(post);
 
         console.log(`\n▶ Publishing to Facebook: [${account.name}] (Page ID: ${account.pageId})...`);
         const token = getEnvToken(account.tokenEnv);
@@ -15,16 +14,18 @@ export class FacebookPublisher {
         formData.append('access_token', token);
         formData.append('published', 'true');
 
-        if (imageBuffer) {
-            formData.append('source', new Blob([imageBuffer]));
-            formData.append('message', message);
-        } else if (videoBuffer) {
-            formData.append('source', new Blob([videoBuffer]));
-            formData.append('description', message);
+        if (media) {
+            formData.append('source', new Blob([new Uint8Array(media.buffer)]));
+            if (media.type === 'video') {
+                formData.append('description', message);
+            } else {
+                formData.append('message', message);
+            }
         } else {
             formData.append('message', message);
         }
 
+        const endpoint = media ? (media.type === 'video' ? 'videos' : 'photos') : 'feed';
         const url = `https://graph.facebook.com/v25.0/${account.pageId}/${endpoint}`;
         const res = await fetch(url, { method: 'POST', body: formData as any });
         const result = await res.json() as any;
