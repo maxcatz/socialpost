@@ -7,10 +7,11 @@ import { publishFacebookPost } from './publishers/facebook.js';
 import { publishToTelegram } from './publishers/telegram.js';
 import { prepareYouTubePost } from './publishers/youtube.js';
 import { AccountsConfig } from './types.js';
+import {publishToWhatsAppGroup} from "./publishers/whatsapp";
 
 // Тип для хранения информации о выбранном аккаунте
 interface SelectedAccount {
-    platform: 'telegram' | 'facebook' | 'youtube';
+    platform: 'telegram' | 'facebook' | 'youtube' | 'whatsapp';
     index: number;
 }
 
@@ -66,6 +67,13 @@ async function main() {
         });
     }
 
+    if (accounts.whatsapp && accounts.whatsapp.length > 0) {
+        promptChoices.push(new Separator('── WhatsApp ──'));
+        accounts.whatsapp.forEach((acc, index) => {
+            promptChoices.push({ name: `WhatsApp - ${acc.name}`, value: { platform: 'whatsapp', index }, checked: true });
+        });
+    }
+
     if (promptChoices.length === 0) {
         console.error('❌ Error: No accounts found in accounts.json!');
         process.exit(1);
@@ -97,6 +105,10 @@ async function main() {
             .filter(s => s.platform === 'youtube')
             .map(s => accounts.youtube[s.index]);
 
+        const selectedWhatsApp = selectedAccounts
+            .filter(s => s.platform === 'whatsapp')
+            .map(s => accounts.whatsapp[s.index]);
+
         // 3. Парсим файл
         console.log(`\n📄 Processing file: ${filePath}`);
         const postData = parsePost(filePath);
@@ -112,6 +124,10 @@ async function main() {
 
         if (selectedYouTube.length > 0) {
             await prepareYouTubePost(postData, filePath, selectedYouTube);
+        }
+
+        for (const acc of selectedWhatsApp) {
+            await publishToWhatsAppGroup(postData, acc);
         }
 
         console.log('\n🎉 All tasks completed successfully!');

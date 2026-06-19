@@ -21,9 +21,14 @@ export interface YouTubeConfig {
     name: string;
     channelHandle: string;
 }
+export interface WhatsAppConfig {
+    name: string;
+    inviteLink: string;
+}
 
 export interface AccountsConfig {
     telegram: TelegramConfig[];
     facebook: FacebookConfig[];
     youtube: YouTubeConfig[];
+    whatsapp: WhatsAppConfig[];
 }
