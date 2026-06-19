@@ -2,6 +2,7 @@ import open from 'open';
 import clipboardy from 'clipboardy';
 import { PostData } from '../types.js';
 import {input} from "@inquirer/prompts";
+import {revealFileInFinder} from "../utils";
 
 export async function publishToWhatsAppGroup(post: PostData, account: { name: string, inviteLink: string }) {
     console.log(`\n▶ Preparing WhatsApp for: [${account.name}]...`);
@@ -13,13 +14,19 @@ export async function publishToWhatsAppGroup(post: PostData, account: { name: st
     // macOS автоматически переключит фокус на WhatsApp Desktop, если он запущен.
     await open(account.inviteLink);
 
+    if (post.image) {
+        await revealFileInFinder(post.image);
+    } else if (post.video) {
+        await revealFileInFinder(post.video);
+    }
+
     console.log(`✅ Opened WhatsApp group: ${account.name}`);
     console.log('-----------------------------------------');
     console.log('Next steps:');
     console.log('1. The WhatsApp app should now be in focus.');
     console.log('2. Press Cmd+V to paste the text.');
-    if (post.image) {
-        console.log(`   2.1. Image found: ${post.image}. You may need to drag it manually.`);
+    if (post.image || post.video) {
+        console.log(`   2.1. Media found. You may need to drag it manually.`);
     }
     console.log('3. Press Enter to send.');
     console.log('4. Once published, click "Share" or the post timestamp to copy the post URL.\n');

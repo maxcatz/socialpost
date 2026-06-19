@@ -1,6 +1,7 @@
 export interface PostData {
     title?: string;
     image?: string;
+    video?: string;
     facebook_tags?: string;
     content: string; // The post text with the title already included
 }

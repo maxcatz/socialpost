@@ -4,17 +4,58 @@ import {PostData, PublishResult, TelegramConfig} from '../types.js';
 export async function publishToTelegram(post: PostData, account: TelegramConfig): Promise<PublishResult> {
 
     const imageBuffer = post.image ? fs.readFileSync(post.image) : undefined;
+    const videoBuffer = post.video ? fs.readFileSync(post.video) : undefined;
     try {
-
+        let postUrl ="";
         console.log(`\n▶ Publishing to Telegram: [${account.name}] (Chat ID: ${account.chatId})...`);
         const token = process.env[account.tokenEnv];
 
         if (!token) {
             throw new Error(`❌ Ошибка: Токен ${account.tokenEnv} не найден в файле .env. Пропускаем этот аккаунт.`);
         }
+        if (videoBuffer) {
+            if (post.content.length <= 1024) {
+                // Текст короткий, отправляем как подпись к видео
+                const url = `https://api.telegram.org/bot${token}/sendVideo`;
+                const formData = new FormData();
+                formData.append('chat_id', account.chatId);
+                formData.append('caption', post.content);
+                formData.append('video', new Blob([videoBuffer]), 'video.mp4');
 
+                const res = await fetch(url, { method: 'POST', body: formData as any });
+                const result = await res.json() as any;
+                if (!result.ok) throw new Error(result.description);
+                postUrl = `https://t.me/${account.channelName}/${result.result.message_id}`;
+
+            } else {
+                // Текст длинный (> 1024). Отправляем текст, затем видео в реплай.
+                // (Логика точно такая же, как у тебя была для длинных текстов с картинками)
+                const textUrl = `https://api.telegram.org/bot${token}/sendMessage`;
+                const textRes = await fetch(textUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ chat_id: account.chatId, text: post.content.substring(0, 4096) })
+                });
+                const textResult = await textRes.json() as any;
+                if (!textResult.ok) throw new Error(textResult.description);
+
+                const messageId = textResult.result.message_id;
+
+                const videoUrl = `https://api.telegram.org/bot${token}/sendVideo`;
+                const videoFormData = new FormData();
+                videoFormData.append('chat_id', account.chatId);
+                videoFormData.append('video', new Blob([videoBuffer]), 'video.mp4');
+                videoFormData.append('reply_to_message_id', messageId.toString());
+
+                const videoRes = await fetch(videoUrl, { method: 'POST', body: videoFormData as any });
+                const videoResult = await videoRes.json() as any;
+                if (!videoResult.ok) throw new Error(videoResult.description);
+
+                postUrl = `https://t.me/${account.channelName}/${videoResult.result.message_id}`;
+            }
+        }
         // SCENARIO 1: No image - use sendMessage
-        if (!imageBuffer) {
+        else if (!imageBuffer) {
             const url = `https://api.telegram.org/bot${token}/sendMessage`;
             const res = await fetch(url, {
                 method: 'POST',
@@ -26,8 +67,7 @@ export async function publishToTelegram(post: PostData, account: TelegramConfig)
                 throw new Error(`❌ Error [${account.name}]:`, result.description);
             } else {
                 console.log(`✅ Text posted to [${account.name}]. Link: https://t.me/${account.channelName}/${result.result.message_id}`);
-                const postUrl = `https://t.me/${account.channelName}/${result.result.message_id}`;
-                return {platform: 'Telegram', name: account.name, url: postUrl};
+                postUrl = `https://t.me/${account.channelName}/${result.result.message_id}`;
             }
         } else if (post.content.length <= 1024) {
             // Option 1: Short text. Send everything together (photo + caption)
@@ -43,7 +83,7 @@ export async function publishToTelegram(post: PostData, account: TelegramConfig)
             if (!result.ok) throw new Error(`❌ Telegram Error [${account.name}]:`, result.description);
             else {
                 console.log(`✅ Text posted to [${account.name}]. Link: https://t.me/${account.channelName}/${result.result.message_id}`);
-                const postUrl = `https://t.me/${account.channelName}/${result.result.message_id}`;
+                postUrl = `https://t.me/${account.channelName}/${result.result.message_id}`;
                 return {platform: 'Telegram', name: account.name, url: postUrl};
             }
 
@@ -79,10 +119,11 @@ export async function publishToTelegram(post: PostData, account: TelegramConfig)
             if (!photoResult.ok) throw new Error(`❌ Error sending photo reply [${account.name}]:`, photoResult.description);
             else {
                 console.log(`✅ Text posted to [${account.name}]. Link: https://t.me/${account.channelName}/${photoResult.result.message_id}`);
-                const postUrl =  `https://t.me/${account.channelName}/${photoResult.result.message_id}`;
+                postUrl =  `https://t.me/${account.channelName}/${photoResult.result.message_id}`;
                 return ({platform: 'Telegram', name: account.name, url: postUrl});
             }
         }
+        return {platform: 'Telegram', name: account.name, url: postUrl};
     } catch (error: any) {
         console.error(`❌ System error in Telegram publisher [${account.name}]:`, error.message);
         return { platform: 'Telegram', name: account.name, url: "Error" };

@@ -7,6 +7,13 @@ export function parsePost(filePath: string): PostData {
     const fileContent = fs.readFileSync(filePath, 'utf8');
     const { data, content } = matter(fileContent);
 
+    if (data.image && data.video) {
+        console.error('\n❌ File validation error!');
+        console.error('The post front-matter contains both an image and a video.');
+        console.error('Please specify only one media format.');
+        process.exit(1);
+    }
+
     // Add bold title for ALL platforms if it exists in front-matter
     let finalPostText = content.trim();
     if (data.title) {
@@ -23,11 +30,20 @@ export function parsePost(filePath: string): PostData {
             console.warn(`\n⚠️ Warning: Image specified but not found at [${absolutePath}]. Publishing as text-only.`);
         }
     }
+    let resolvedVideo: string | undefined = undefined;
+    if (data.video) {
+        const absoluteVideoPath = path.resolve(data.video);
+        if (fs.existsSync(absoluteVideoPath)) {
+            resolvedVideo = absoluteVideoPath;
+        } else {
+            console.warn(`\n⚠️ Warning: Video specified but not found at [${absoluteVideoPath}].`);
+        }
+    }
 
     return {
         title: data.title,
-        // Convert image path to absolute if provided
-        image: data.image ? path.resolve(data.image) : undefined,
+        image: resolvedImage,
+        video: resolvedVideo,
         facebook_tags: data.facebook_tags,
         content: finalPostText
     };

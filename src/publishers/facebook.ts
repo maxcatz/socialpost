@@ -5,7 +5,8 @@ export async function publishFacebookPost(post: PostData, account: FacebookConfi
 
     const message = `${post.content}\n\n${post.facebook_tags || ''}`.trim();
     const imageBuffer = post.image ? fs.readFileSync(post.image) : undefined;
-    const endpoint = post.image ? 'photos' : 'feed';
+    const videoBuffer = post.video ? fs.readFileSync(post.video) : undefined;
+    const endpoint = post.video? 'videos': post.image ? 'photos' : 'feed';
 
     try {
         console.log(`\n▶ Publishing to Facebook: [${account.name}] (Page ID: ${account.pageId})...`);
@@ -14,12 +15,17 @@ export async function publishFacebookPost(post: PostData, account: FacebookConfi
             throw new Error(`❌ Ошибка: Токен ${account.tokenEnv} не найден в файле .env. Пропускаем этот аккаунт.`);
         }
         const formData = new FormData();
-        formData.append('message', message);
         formData.append('access_token', token);
         formData.append('published', 'true');
 
         if (imageBuffer) {
             formData.append('source', new Blob([imageBuffer]));
+            formData.append('message', message);
+        } else if(videoBuffer) {
+            formData.append('source', new Blob([videoBuffer]));
+            formData.append('description', message);
+        } else {
+            formData.append('message', message);
         }
 
         const url = `https://graph.facebook.com/v25.0/${account.pageId}/${endpoint}`;
