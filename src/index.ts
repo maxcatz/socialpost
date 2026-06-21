@@ -58,34 +58,35 @@ async function main() {
     try {
         const selectedAccounts = await selectAccounts(accounts);
         const postData = parsePost(filePath);
+        const results: PublishResult[] = [];
 
-        // Формируем список задач (Promises)
-        const tasks: Promise<PublishResult>[] = selectedAccounts.map(s => {
+        for (const s of selectedAccounts) {
             const acc = accounts[s.platform as keyof AccountsConfig][s.index];
+            let result: PublishResult;
 
-            // Динамический вызов паблишера
-            if (s.platform === 'facebook') return FacebookPublisher.publish(postData, acc as FacebookConfig);
-            if (s.platform === 'telegram') return TelegramPublisher.publish(postData, acc as TelegramConfig);
-            if (s.platform === 'youtube') return YouTubePublisher.publish(postData, filePath, acc as YouTubeConfig);
-            if (s.platform === 'whatsapp') return WhatsAppPublisher.publish(postData, acc as WhatsAppConfig);
+            // Dynamic publisher call with await inside the loop
+            if (s.platform === 'facebook') {
+                result = await FacebookPublisher.publish(postData, acc as FacebookConfig);
+            } else if (s.platform === 'telegram') {
+                result = await TelegramPublisher.publish(postData, acc as TelegramConfig);
+            } else if (s.platform === 'youtube') {
+                result = await YouTubePublisher.publish(postData, filePath, acc as YouTubeConfig);
+            } else if (s.platform === 'whatsapp') {
+                result = await WhatsAppPublisher.publish(postData, acc as WhatsAppConfig);
+            } else {
+                throw new Error(`Unsupported platform: ${s.platform}`);
+            }
 
-            throw new Error(`Unsupported platform: ${s.platform}`);
-        });
+            results.push(result);
+        }
 
-        // 3. Публикуем всё параллельно
-        console.log(`\n🚀 Publishing...`);
-        const results = await Promise.all(tasks);
-
-        // 4. Генерация отчета
+        // 4. Make report
         const reportText = [
             `\n🎉 All tasks completed!`,
             ...results.map(r => `• ${r.platform} (${r.name}): ${r.url || 'Failed'}`)
         ].join('\n');
 
         console.log(reportText);
-
-        // Если в списке были WhatsApp, можно продублировать туда отчет
-        // (логика отправки отчета в WA можно вызвать здесь)
 
     } catch (error: any) {
         if (error.message === 'NO_SELECTION') console.log('\n⚠️ No accounts selected. Exiting...');
