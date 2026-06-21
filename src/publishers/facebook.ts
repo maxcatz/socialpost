@@ -16,18 +16,19 @@ export class FacebookPublisher {
         formData.append('published', 'true');
 
         if (media) {
-            if (media.type === 'video') {
-                formData.append('source', new Blob([new Uint8Array(media.buffer)], {type: 'video/mp4'}));
+            const isVideo = media.mimeType.startsWith('video/');
+            if (isVideo) {
+                formData.append('source', new Blob([new Uint8Array(media.buffer)], {type: media.mimeType}));
                 formData.append('description', message);
             } else {
-                formData.append('source', new Blob([new Uint8Array(media.buffer)], {type: 'image/jpeg'}));
+                formData.append('source', new Blob([new Uint8Array(media.buffer)], {type: media.mimeType}));
                 formData.append('message', message);
             }
         } else {
             formData.append('message', message);
         }
 
-        const endpoint = media ? (media.type === 'video' ? 'videos' : 'photos') : 'feed';
+        const endpoint = media ? (media.mimeType.startsWith('video/') ? 'videos' : 'photos') : 'feed';
         const url = `https://graph.facebook.com/v25.0/${account.pageId}/${endpoint}`;
         const res = await fetch(url, { method: 'POST', body: formData as any });
         const result = await res.json() as any;

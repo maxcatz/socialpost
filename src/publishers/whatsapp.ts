@@ -7,7 +7,7 @@ export class WhatsAppPublisher {
         const instructions = [
             'The WhatsApp app should now be in focus.',
             'Press Cmd+V to paste the text.',
-            ...(post.image || post.video ? ['Media found. You may need to drag it manually.'] : []),
+            ...(post.media ? ['Media found. You may need to drag it manually.'] : []),
             'Press Enter to send.',
             'Once published, click "Share" or the post timestamp to copy the post URL.'
         ];

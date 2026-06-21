@@ -17,25 +17,41 @@ export function getEnvToken(tokenEnv: string): string {
 }
 
 export interface MediaData {
-    type: 'image' | 'video';
+    mimeType: string;
     buffer: Buffer;
 }
 
 /**
  * Reads the media attachment if present in the post.
- * A post can have either a video or an image.
+ * Uses media and mimeType fields from frontmatter.
  */
 export function getMedia(post: PostData): MediaData | null {
-    if (post.video && post.image) {
-        throw new Error('The post front-matter contains both an image and a video. Please specify only one media format.');
+    if (!post.media) {
+        return null;
     }
-    if (post.video) {
-        return { type: 'video', buffer: fs.readFileSync(post.video) };
-    }
-    if (post.image) {
-        return { type: 'image', buffer: fs.readFileSync(post.image) };
-    }
-    return null;
+    
+    const mimeType = post.mimeType || inferMimeType(post.media);
+    
+    return { mimeType, buffer: fs.readFileSync(post.media) };
+}
+
+/**
+ * Infers MIME type from file extension.
+ */
+function inferMimeType(filePath: string): string {
+    const ext = filePath.toLowerCase().split('.').pop();
+    const mimeTypes: Record<string, string> = {
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'png': 'image/png',
+        'gif': 'image/gif',
+        'webp': 'image/webp',
+        'mp4': 'video/mp4',
+        'mov': 'video/quicktime',
+        'avi': 'video/x-msvideo',
+        'webm': 'video/webm'
+    };
+    return mimeTypes[ext || ''] || 'application/octet-stream';
 }
 
 /**
@@ -78,10 +94,8 @@ export async function publishManual(options: ManualPublishOptions): Promise<Publ
     clipboardy.writeSync(post.content);
 
     // 2. Open the media file in finder
-    if (post.image) {
-        await revealFileInFinder(post.image);
-    } else if (post.video) {
-        await revealFileInFinder(post.video);
+    if (post.media) {
+        await revealFileInFinder(post.media);
     }
 
     // 3. Open target URL in browser

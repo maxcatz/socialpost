@@ -11,9 +11,9 @@ export class YouTubePublisher {
     let finalPostData = {...post};
 
     // 1. If there is a video, upload it via API first
-    if (post.video && fs.existsSync(post.video)) {
-      console.log(`🎥 Video detected: ${post.video}. Starting upload...`);
-      uploadedVideoUrl = await this.uploadVideoViaApi(post.video, post.title, post.content);
+    if (post.media && post.mimeType?.startsWith('video/') && fs.existsSync(post.media)) {
+      console.log(`🎥 Video detected: ${post.media}. Starting upload...`);
+      uploadedVideoUrl = await this.uploadVideoViaApi(post.media, post.title, post.content);
 
       console.log('\n=========================================');
       console.log(`✅ Video uploaded successfully!`);
