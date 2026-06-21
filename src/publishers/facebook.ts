@@ -1,5 +1,6 @@
 import { PostData, FacebookConfig, PublishResult } from '../types.js';
 import { getEnvToken, getMedia, RunSafe } from './common.js';
+import {type} from "node:os";
 
 export class FacebookPublisher {
     @RunSafe('Facebook')
@@ -15,10 +16,11 @@ export class FacebookPublisher {
         formData.append('published', 'true');
 
         if (media) {
-            formData.append('source', new Blob([new Uint8Array(media.buffer)]));
             if (media.type === 'video') {
+                formData.append('source', new Blob([new Uint8Array(media.buffer)], {type: 'video/mp4'}));
                 formData.append('description', message);
             } else {
+                formData.append('source', new Blob([new Uint8Array(media.buffer)], {type: 'image/jpeg'}));
                 formData.append('message', message);
             }
         } else {
