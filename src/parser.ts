@@ -20,30 +20,21 @@ export function parsePost(filePath: string): PostData {
         finalPostText = `${data.title}\n\n${finalPostText}`;
     }
 
-    let resolvedImage: string | undefined = undefined;
-    if (data.image) {
-        const absolutePath = path.resolve(data.image);
+    let resolvedMedia: string | undefined = undefined;
+    if (data.media) {
+        const absolutePath = path.resolve(data.media);
         if (fs.existsSync(absolutePath)) {
-            resolvedImage = absolutePath;
+            resolvedMedia = absolutePath;
         } else {
             // Если путь прописан, но файла физически нет, выдаем предупреждение
-            console.warn(`\n⚠️ Warning: Image specified but not found at [${absolutePath}]. Publishing as text-only.`);
-        }
-    }
-    let resolvedVideo: string | undefined = undefined;
-    if (data.video) {
-        const absoluteVideoPath = path.resolve(data.video);
-        if (fs.existsSync(absoluteVideoPath)) {
-            resolvedVideo = absoluteVideoPath;
-        } else {
-            console.warn(`\n⚠️ Warning: Video specified but not found at [${absoluteVideoPath}].`);
+            console.warn(`\n⚠️ Warning: Media specified but not found at [${absolutePath}]. Publishing as text-only.`);
         }
     }
 
     return {
         title: data.title,
-        image: resolvedImage,
-        video: resolvedVideo,
+        media: resolvedMedia,
+        mimeType: data.mimeType,
         facebook_tags: data.facebook_tags,
         content: finalPostText
     };
