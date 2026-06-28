@@ -1,12 +1,11 @@
 {
   "telegram": [
     { "name": "Мысли перед Субботой", "tokenEnv": "TELEGRAM_BOT_TOKEN" , "chatId": "-1001274139840", "channelName": "tora_maximcatz"  },
-    { "name": "Зеут (Моше Фейглин/Аркадий Муттер)", "tokenEnv": "TELEGRAM_BOT_TOKEN", "chatId": "-1001946383896", "channelName": "arcady_mutter" },
-    { "name": "Test channel", "tokenEnv": "TELEGRAM_BOT_TOKEN", "chatId": "-1004313397081", "channelName": "zehut_ru" }
+    { "name": "Аркадий Муттер - Зеут", "tokenEnv": "TELEGRAM_BOT_TOKEN", "chatId": "-1001946383896", "channelName": "arcady_mutter"  },
+    { "name": "Партия ЗЕУТ во главе с Моше Фейглиным", "tokenEnv": "TELEGRAM_BOT_TOKEN", "chatId": "-1004313397081", "channelName": "zehut_ru" }
   ],
   "facebook": [
-    { "name": "Партия ЗЕУТ во главе с Моше Фейглиным", "pageId": "988300087883581", "tokenEnv": "FB_PAGE_TOKEN" },
-    { "name": "Test page", "pageId": "1178447615353584", "tokenEnv": "FB_TEST_PAGE_TOKEN" }
+    { "name": "Партия ЗЕУТ во главе с Моше Фейглиным", "pageId": "988300087883581", "tokenEnv": "FB_PAGE_TOKEN" }
   ],
   "youtube": [
     { "name": "Партия Зеут - Еврейская Идентичность", "channelHandle": "@Zehut-Ru" }

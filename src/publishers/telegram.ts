@@ -20,7 +20,7 @@ export class TelegramPublisher {
 
         if (media) {
             const sendMedia = (caption?: string, replyId?: number) =>
-                media.type === 'video'
+                media.mimeType.startsWith('video')
                     ? this.sendVideo(token, account.chatId, media.buffer, caption, replyId)
                     : this.sendPhoto(token, account.chatId, media.buffer, caption, replyId);
 

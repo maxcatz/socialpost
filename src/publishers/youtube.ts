@@ -60,7 +60,7 @@ export class YouTubePublisher {
    * Uploads a video file to YouTube via the Data API v3.
    * Throws an error if upload fails or credentials are missing.
    */
-  private static async uploadVideoViaApi(videoPath: string, title: string, description: string): Promise<string> {
+  private static async uploadVideoViaApi(videoPath: string, title: string | undefined, description: string): Promise<string> {
     const clientId = process.env.YT_CLIENT_ID;
     const clientSecret = process.env.YT_CLIENT_SECRET;
     const refreshToken = process.env.YT_REFRESH_TOKEN;
