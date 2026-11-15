@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import open from 'open';
 import clipboardy from 'clipboardy';
 import { input } from '@inquirer/prompts';
-import { revealFileInFinder } from '../utils.js';
+import { revealFileInFinder, copyImageToClipboard } from '../utils.js';
 import { PostData, PublishResult } from '../types.js';
 
 /**
@@ -23,35 +23,14 @@ export interface MediaData {
 
 /**
  * Reads the media attachment if present in the post.
- * Uses media and mimeType fields from frontmatter.
+ * The mimeType is already inferred by the parser.
  */
 export function getMedia(post: PostData): MediaData | null {
-    if (!post.media) {
+    if (!post.media || !post.mimeType) {
         return null;
     }
     
-    const mimeType = post.mimeType || inferMimeType(post.media);
-    
-    return { mimeType, buffer: fs.readFileSync(post.media) };
-}
-
-/**
- * Infers MIME type from file extension.
- */
-function inferMimeType(filePath: string): string {
-    const ext = filePath.toLowerCase().split('.').pop();
-    const mimeTypes: Record<string, string> = {
-        'jpg': 'image/jpeg',
-        'jpeg': 'image/jpeg',
-        'png': 'image/png',
-        'gif': 'image/gif',
-        'webp': 'image/webp',
-        'mp4': 'video/mp4',
-        'mov': 'video/quicktime',
-        'avi': 'video/x-msvideo',
-        'webm': 'video/webm'
-    };
-    return mimeTypes[ext || ''] || 'application/octet-stream';
+    return { mimeType: post.mimeType, buffer: fs.readFileSync(post.media) };
 }
 
 /**
@@ -74,6 +53,52 @@ export function RunSafe(platform: string) {
     };
 }
 
+/**
+ * For image posts: waits for the user to paste the text first, then puts the image into the clipboard.
+ * Videos (and non-macOS systems) fall back to revealing the file in Finder.
+ */
+export async function offerMediaInClipboard(
+    post: PostData,
+    message = '📋 Вставьте текст (Cmd+V), затем нажмите Enter — скопирую картинку в буфер обмена:'
+): Promise<void> {
+    if (!post.media) return;
+
+    if (post.mimeType?.startsWith('image/') && process.platform === 'darwin') {
+        await input({ message });
+        try {
+            await copyImageToClipboard(post.media, post.mimeType);
+            console.log('✅ Картинка скопирована в буфер обмена — вставьте её через Cmd+V.');
+            return;
+        } catch (error: any) {
+            console.warn(`⚠️ Не удалось скопировать картинку (${error.message.trim()}).`);
+        }
+    }
+    await revealFileInFinder(post.media);
+}
+
+/**
+ * The user publishes the post in the browser themselves; the URL is optional.
+ * An empty answer falls back to a matching URL from the clipboard (if its host contains `urlHost`).
+ */
+export async function askPublishedUrl(accountName: string, urlHost: string): Promise<string> {
+    console.log('\n=========================================');
+    console.log(`👉 Проверьте пост в Chrome и нажмите «Опубликовать» для [${accountName}].`);
+    console.log('   Затем нажмите Enter здесь (или вставьте URL поста, если нужен в отчёте).');
+    console.log('=========================================\n');
+
+    const answer = (await input({ message: `URL поста [${accountName}] (необязательно):` })).trim();
+    console.log('-----------------------------------------\n');
+    if (answer) return answer;
+
+    try {
+        const clip = clipboardy.readSync().trim();
+        if (/^https?:\/\/\S+$/.test(clip) && clip.includes(urlHost)) return clip;
+    } catch {
+        // clipboard is unavailable — ignore
+    }
+    return 'опубликовано (URL не указан)';
+}
+
 export interface ManualPublishOptions {
     platform: string;
     accountName: string;
@@ -93,15 +118,10 @@ export async function publishManual(options: ManualPublishOptions): Promise<Publ
     // 1. Copy the final text to the clipboard
     clipboardy.writeSync(post.content);
 
-    // 2. Open the media file in finder
-    if (post.media) {
-        await revealFileInFinder(post.media);
-    }
-
-    // 3. Open target URL in browser
+    // 2. Open target URL in browser
     await open(urlToOpen);
 
-    // 4. Print instructions
+    // 3. Print instructions
     console.log(`\n=========================================`);
     console.log(`✅ Opened ${platform} URL for: [${accountName}]`);
     console.log(`✅ Post text successfully copied to clipboard!`);
@@ -111,6 +131,9 @@ export async function publishManual(options: ManualPublishOptions): Promise<Publ
         console.log(`${index + 1}. ${inst}`);
     });
     console.log('');
+
+    // 4. Media: image goes to the clipboard after the text is pasted, video is revealed in Finder
+    await offerMediaInClipboard(post);
 
     // 5. Prompt for the final published URL
     const postUrl = await input({
