@@ -17,5 +17,12 @@
       "inviteLink1": "https://chat.whatsapp.com/BUKzuj87afeBBzE7cxS3MX",
       "inviteLink": "whatsapp://chat?code=BUKzuj87afeBBzE7cxS3MX"
     }
+  ],
+  "groups": [
+    {
+      "name": "Группа ЗЕУТ",
+      "groupId": "1679927412643433",
+      "url": "https://www.facebook.com/groups/1679927412643433"
+    }
   ]
 }

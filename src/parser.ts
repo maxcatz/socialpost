@@ -21,8 +21,10 @@ export function parsePost(filePath: string): PostData {
     }
 
     let resolvedMedia: string | undefined = undefined;
-    if (data.media) {
-        const absolutePath = path.resolve(data.media);
+    // Поддерживаем media, video и image — в приоритете media, затем video, затем image
+    const mediaField = data.media || data.video || data.image;
+    if (mediaField) {
+        const absolutePath = path.resolve(mediaField);
         if (fs.existsSync(absolutePath)) {
             resolvedMedia = absolutePath;
         } else {
@@ -31,11 +33,36 @@ export function parsePost(filePath: string): PostData {
         }
     }
 
+    // Если mimeType не указан в frontmatter, определяем его автоматически
+    let mimeType = data.mimeType;
+    if (!mimeType && resolvedMedia) {
+        mimeType = inferMimeType(resolvedMedia);
+    }
+
     return {
         title: data.title,
         media: resolvedMedia,
-        mimeType: data.mimeType,
+        mimeType,
         facebook_tags: data.facebook_tags,
         content: finalPostText
     };
+}
+
+/**
+ * Infers MIME type from file extension.
+ */
+function inferMimeType(filePath: string): string {
+    const ext = filePath.toLowerCase().split('.').pop();
+    const mimeTypes: Record<string, string> = {
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'png': 'image/png',
+        'gif': 'image/gif',
+        'webp': 'image/webp',
+        'mp4': 'video/mp4',
+        'mov': 'video/quicktime',
+        'avi': 'video/x-msvideo',
+        'webm': 'video/webm'
+    };
+    return mimeTypes[ext || ''] || 'application/octet-stream';
 }

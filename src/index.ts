@@ -6,12 +6,14 @@ import { parsePost } from './parser.js';
 import { FacebookPublisher } from './publishers/facebook.js';
 import { TelegramPublisher } from './publishers/telegram.js';
 import { YouTubePublisher } from './publishers/youtube.js';
-import {AccountsConfig, FacebookConfig, PublishResult, TelegramConfig, WhatsAppConfig, YouTubeConfig} from './types.js';
+import { FacebookGroupPublisher } from './publishers/group.js';
+import {AccountsConfig, FacebookConfig, FacebookGroupConfig, PublishResult, TelegramConfig, WhatsAppConfig, YouTubeConfig} from './types.js';
 import { WhatsAppPublisher } from "./publishers/whatsapp.js";
+import { disconnectChrome } from './browser.js';
 
 // Тип для хранения информации о выбранном аккаунте
 interface SelectedAccount {
-    platform: 'telegram' | 'facebook' | 'youtube' | 'whatsapp';
+    platform: 'telegram' | 'facebook' | 'youtube' | 'whatsapp' | 'groups';
     index: number;
 }
 
@@ -19,16 +21,20 @@ async function selectAccounts(accounts: AccountsConfig): Promise<SelectedAccount
     const promptChoices: any[] = [];
 
     // Helper для добавления аккаунтов в меню
-    const addChoices = (platform: string, list: any[]) => {
+    const addChoices = (platform: string, list: any[], label?: string) => {
         if (!list || list.length === 0) return;
-        promptChoices.push(new Separator(`── ${platform.toUpperCase()} ──`));
+        const displayName = label || platform;
+        promptChoices.push(new Separator(`── ${displayName.toUpperCase()} ──`));
         list.forEach((acc, index) => {
-            promptChoices.push({ name: `${platform} - ${acc.name}`, value: { platform, index }, checked: true });
+            promptChoices.push({ name: `${displayName} - ${acc.name}`, value: { platform, index }, checked: true });
         });
     };
 
     addChoices('telegram', accounts.telegram);
     addChoices('facebook', accounts.facebook);
+    if (accounts.groups) {
+        addChoices('groups', accounts.groups, 'FB Group');
+    }
     addChoices('youtube', accounts.youtube);
     addChoices('whatsapp', accounts.whatsapp);
 
@@ -61,7 +67,7 @@ async function main() {
         const results: PublishResult[] = [];
 
         for (const s of selectedAccounts) {
-            const acc = accounts[s.platform as keyof AccountsConfig][s.index];
+            const acc = (accounts as any)[s.platform][s.index];
             let result: PublishResult;
 
             // Dynamic publisher call with await inside the loop
@@ -73,6 +79,8 @@ async function main() {
                 result = await YouTubePublisher.publish(postData, filePath, acc as YouTubeConfig);
             } else if (s.platform === 'whatsapp') {
                 result = await WhatsAppPublisher.publish(postData, acc as WhatsAppConfig);
+            } else if (s.platform === 'groups') {
+                result = await FacebookGroupPublisher.publish(postData, accounts.groups![s.index]);
             } else {
                 throw new Error(`Unsupported platform: ${s.platform}`);
             }
@@ -92,6 +100,8 @@ async function main() {
         if (error.message === 'NO_SELECTION') console.log('\n⚠️ No accounts selected. Exiting...');
         else if (error.name === 'ExitPromptError') console.log('\n🚪 Process cancelled by user.');
         else console.error('\n❌ A critical error occurred:', error.message);
+    } finally {
+        await disconnectChrome();
     }
 }
 

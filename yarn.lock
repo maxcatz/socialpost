@@ -1850,6 +1850,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"playwright-core@npm:^1.65.0":
+  version: 1.65.0
+  resolution: "playwright-core@npm:1.65.0"
+  bin:
+    playwright-core: cli.js
+  checksum: 10c0/ed905c6fc2457a725c3fdb3ad4500f43c7a1bb2c6e4e8c708e1e314930c7dce446a5756ad073425bf3c6e3ca975e5a35fb0221118e2d51ef7b4b6c6d13d0644c
+  languageName: node
+  linkType: hard
+
 "powershell-utils@npm:^0.1.0":
   version: 0.1.0
   resolution: "powershell-utils@npm:0.1.0"
@@ -1892,6 +1901,7 @@ __metadata:
     googleapis: "npm:^173.0.0"
     gray-matter: "npm:^4.0.3"
     open: "npm:^11.0.0"
+    playwright-core: "npm:^1.65.0"
     ts-node: "npm:^10.9.2"
     tsx: "npm:^4.22.4"
     typescript: "npm:^6.0.3"
