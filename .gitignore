@@ -5,3 +5,7 @@ dist/
 .DS_Store
 posts/
 .idea/
+
+# Telegram relay: user session (secret) and processed-message state
+.telegram_session
+relay_state.json

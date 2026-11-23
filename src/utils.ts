@@ -33,6 +33,20 @@ export async function copyImageToClipboard(filePath: string, mimeType?: string):
     return true;
 }
 
+/**
+ * Shows a system notification (macOS only) — used by the relay watcher when a new post arrives.
+ */
+export function notify(title: string, message: string): Promise<void> {
+    if (os.platform() !== 'darwin') return Promise.resolve();
+    return run('osascript', [
+        '-e', 'on run argv',
+        '-e', 'display notification (item 2 of argv) with title (item 1 of argv) sound name "Glass"',
+        '-e', 'end run',
+        title,
+        message,
+    ]).catch(() => undefined);
+}
+
 export function revealFileInFinder(filePath: string): Promise<void> {
     return new Promise((resolve) => {
         const absolutePath = path.resolve(filePath);

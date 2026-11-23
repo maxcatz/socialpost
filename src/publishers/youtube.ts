@@ -232,9 +232,11 @@ export class YouTubePublisher {
       auth: oauth2Client
     });
 
-    // Enforce YouTube API limits
-    const safeTitle = title ? title.substring(0, 100) : 'New Video';
-    const safeDescription = description ? description.substring(0, 5000) : '';
+    // Enforce YouTube API limits: no "<" / ">" anywhere, title <= 100 chars, description <= 5000 bytes
+    const clean = (text: string) => text.replace(/</g, '‹').replace(/>/g, '›').trim();
+    const firstLine = description.split('\n').find(line => line.trim()) || '';
+    const safeTitle = [...clean(title || firstLine || 'New Video')].slice(0, 100).join('');
+    const safeDescription = truncateBytes(clean(description || ''), 5000);
 
     // Get file size for progress calculation (optional but helpful for large files)
     const fileSize = fs.statSync(videoPath).size;
@@ -271,4 +273,19 @@ export class YouTubePublisher {
 
     return `https://youtu.be/${res.data.id}`;
   }
+}
+
+/**
+ * Cuts the text to at most maxBytes of UTF-8 without breaking a character.
+ */
+function truncateBytes(text: string, maxBytes: number): string {
+  if (Buffer.byteLength(text, 'utf8') <= maxBytes) return text;
+  let result = '';
+  let bytes = 0;
+  for (const char of text) {
+    bytes += Buffer.byteLength(char, 'utf8');
+    if (bytes > maxBytes) break;
+    result += char;
+  }
+  return result;
 }

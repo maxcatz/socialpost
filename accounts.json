@@ -24,5 +24,13 @@
       "groupId": "1679927412643433",
       "url": "https://www.facebook.com/groups/1679927412643433"
     }
-  ]
+  ],
+  "relay": {
+    "channels": ["m_feiglin"],
+    "geminiUrl": "https://gemini.google.com/app",
+    "prompt": "Переведи на русский язык. Сохрани абзацы, эмодзи и ссылки. Верни только перевод без пояснений:",
+    "latestOnly": false,
+    "limit": 10,
+    "pollInterval": 60
+  }
 }

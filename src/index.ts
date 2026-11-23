@@ -1,56 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
-import { checkbox, Separator } from '@inquirer/prompts';
 import { parsePost } from './parser.js';
-import { FacebookPublisher } from './publishers/facebook.js';
-import { TelegramPublisher } from './publishers/telegram.js';
-import { YouTubePublisher } from './publishers/youtube.js';
-import { FacebookGroupPublisher } from './publishers/group.js';
-import {AccountsConfig, FacebookConfig, FacebookGroupConfig, PublishResult, TelegramConfig, WhatsAppConfig, YouTubeConfig} from './types.js';
-import { WhatsAppPublisher } from "./publishers/whatsapp.js";
+import { printReport, publishToAccounts, selectAccounts } from './runner.js';
+import { AccountsConfig } from './types.js';
 import { disconnectChrome } from './browser.js';
-
-// Тип для хранения информации о выбранном аккаунте
-interface SelectedAccount {
-    platform: 'telegram' | 'facebook' | 'youtube' | 'whatsapp' | 'groups';
-    index: number;
-}
-
-async function selectAccounts(accounts: AccountsConfig): Promise<SelectedAccount[]> {
-    const promptChoices: any[] = [];
-
-    // Helper для добавления аккаунтов в меню
-    const addChoices = (platform: string, list: any[], label?: string) => {
-        if (!list || list.length === 0) return;
-        const displayName = label || platform;
-        promptChoices.push(new Separator(`── ${displayName.toUpperCase()} ──`));
-        list.forEach((acc, index) => {
-            promptChoices.push({ name: `${displayName} - ${acc.name}`, value: { platform, index }, checked: true });
-        });
-    };
-
-    addChoices('telegram', accounts.telegram);
-    addChoices('facebook', accounts.facebook);
-    if (accounts.groups) {
-        addChoices('groups', accounts.groups, 'FB Group');
-    }
-    addChoices('youtube', accounts.youtube);
-    addChoices('whatsapp', accounts.whatsapp);
-
-    if (promptChoices.length === 0) throw new Error('No accounts found in accounts.json!');
-
-    const selected = await checkbox<SelectedAccount>({
-        message: 'Select specific accounts to publish to:',
-        choices: promptChoices,
-        loop: false,
-    });
-
-    if (selected.length === 0) throw new Error('NO_SELECTION');
-    return selected;
-}
-
-
 
 async function main() {
     const filePath = process.argv[2];
@@ -64,37 +18,8 @@ async function main() {
     try {
         const selectedAccounts = await selectAccounts(accounts);
         const postData = parsePost(filePath);
-        const results: PublishResult[] = [];
-
-        for (const s of selectedAccounts) {
-            const acc = (accounts as any)[s.platform][s.index];
-            let result: PublishResult;
-
-            // Dynamic publisher call with await inside the loop
-            if (s.platform === 'facebook') {
-                result = await FacebookPublisher.publish(postData, acc as FacebookConfig);
-            } else if (s.platform === 'telegram') {
-                result = await TelegramPublisher.publish(postData, acc as TelegramConfig);
-            } else if (s.platform === 'youtube') {
-                result = await YouTubePublisher.publish(postData, filePath, acc as YouTubeConfig);
-            } else if (s.platform === 'whatsapp') {
-                result = await WhatsAppPublisher.publish(postData, acc as WhatsAppConfig);
-            } else if (s.platform === 'groups') {
-                result = await FacebookGroupPublisher.publish(postData, accounts.groups![s.index]);
-            } else {
-                throw new Error(`Unsupported platform: ${s.platform}`);
-            }
-
-            results.push(result);
-        }
-
-        // 4. Make report
-        const reportText = [
-            `\n🎉 All tasks completed!`,
-            ...results.map(r => `• ${r.platform} (${r.name}): ${r.url || 'Failed'}`)
-        ].join('\n');
-
-        console.log(reportText);
+        const results = await publishToAccounts(postData, filePath, accounts, selectedAccounts);
+        printReport(results);
 
     } catch (error: any) {
         if (error.message === 'NO_SELECTION') console.log('\n⚠️ No accounts selected. Exiting...');

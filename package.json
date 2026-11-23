@@ -7,7 +7,9 @@
     "start-js": "node --env-file=.env publishOld.js",
     "start-old": "node --env-file=.env -r ts-node publish.ts",
     "start-1": "node --env-file=.env --loader ts-node/esm ts-node src/index.ts",
-    "start": "node --env-file=.env --import tsx src/index.ts"
+    "start": "node --env-file=.env --import tsx src/index.ts",
+    "relay": "node --env-file=.env --import tsx src/relay.ts",
+    "watch": "node --env-file=.env --import tsx src/relay.ts --watch"
   },
   "volta": {
     "node": "24.17.0",

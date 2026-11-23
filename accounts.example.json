@@ -1,11 +1,31 @@
 {
   "telegram": [
-    { "name": "Main Channel", "tokenEnv": "YOUR_TG_BOT_TOKEN_ENV_HERE", "chatId": "YOUR_TG_CHAT_ID_HERE" }
+    {
+      "name": "Main Channel",
+      "tokenEnv": "YOUR_TG_BOT_TOKEN_ENV_HERE",
+      "chatId": "YOUR_TG_CHAT_ID_HERE"
+    }
   ],
   "facebook": [
-    { "name": "Public Page", "tokenEnv": "YOUR_FB_PAGE_TOKEN_ENV_HERE", "pageId": "YOUR_FB_PAGE_ID_HERE" }
+    {
+      "name": "Public Page",
+      "tokenEnv": "YOUR_FB_PAGE_TOKEN_ENV_HERE",
+      "pageId": "YOUR_FB_PAGE_ID_HERE"
+    }
   ],
   "youtube": [
-    { "name": "Main Channel", "channelHandle": "@yourchannel" }
-  ]
+    {
+      "name": "Main Channel",
+      "channelHandle": "@yourchannel"
+    }
+  ],
+  "relay": {
+    "channels": [
+      "source_channel_username"
+    ],
+    "geminiUrl": "https://gemini.google.com/app",
+    "latestOnly": false,
+    "limit": 10,
+    "pollInterval": 60
+  }
 }

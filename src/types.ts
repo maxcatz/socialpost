@@ -35,13 +35,12 @@ export interface FacebookGroupConfig {
 }
 
 export interface RelayConfig {
-    apiIdEnv: string;       // env var name for TG API ID
-    apiHashEnv: string;     // env var name for TG API hash
-    channels: string[];     // source channel names without @
+    channels: string[];     // public source channels: usernames without @ (read via https://t.me/s/<name>)
     geminiUrl?: string;     // chat or Gem URL, default https://gemini.google.com/app
     prompt?: string;        // text prepended to the source post
     limit?: number;         // max messages per channel per run (default 10)
     latestOnly?: boolean;   // process only the newest post of each channel, skip older ones
+    pollInterval?: number;  // --watch: seconds between checks (default 60)
 }
 
 export interface AccountsConfig {
