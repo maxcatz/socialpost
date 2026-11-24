@@ -9,7 +9,7 @@ import { Page } from 'playwright-core';
 import { parsePost } from './parser.js';
 import { printReport, publishToAccounts, selectAccounts } from './runner.js';
 import { downloadPostMedia, fetchNewPosts, getLatestPostId, SourcePost } from './sources/telegramWeb.js';
-import { askGemini, openGeminiChat, readLastAnswer, readUserMessages } from './translators/gemini.js';
+import { askGemini, generateImage, openGeminiChat, readLastAnswer, readUserMessages } from './translators/gemini.js';
 import { disconnectChrome } from './browser.js';
 import { readStore, writeStore } from './store.js';
 import { loadAccounts } from './accounts.js';
@@ -237,6 +237,56 @@ async function reviewInGemini(post: SourcePost, relay: RelayConfig): Promise<str
     }
 }
 
+/**
+ * For posts without a photo (no media, or a video we do not use): asks Gemini in the same chat
+ * to generate a picture for the approved text. Returns the saved file, or null if it failed.
+ */
+async function generatePictureForPost(post: SourcePost, text: string, relay: RelayConfig, attempt: number, hint: string): Promise<string | null> {
+    try {
+        console.log('\n🎨 Прошу Gemini сгенерировать картинку к тексту...');
+        const page = await getGeminiPage(relay);
+        const base = attempt === 0 ? 'Сгенерируй картинку к этому тексту' : 'Сгенерируй другую картинку к этому тексту';
+        const request = `${base}${hint ? `. Пожелание к картинке: ${hint}` : ''}:\n\n${text}`;
+        const image = await generateImage(page, request);
+        await rememberGeminiChat(page, relay);
+        if (relay.sameChat === false) await closeGeminiPage();
+
+        fs.mkdirSync(DRAFTS_DIR, { recursive: true });
+        const filePath = path.join(DRAFTS_DIR, `${post.channel}_${post.id}_ai.${image.ext}`);
+        fs.writeFileSync(filePath, image.buffer);
+        console.log(`🖼️ Картинка сохранена: ${filePath}`);
+        return filePath;
+    } catch (error: any) {
+        console.warn(`⚠️ Не удалось получить картинку от Gemini (${error.message.split('\n')[0]}).`);
+        return null;
+    }
+}
+
+/**
+ * Lets the user keep the generated picture, ask Gemini for another one (optionally with a wish), or drop it.
+ */
+async function pickGeneratedPicture(post: SourcePost, text: string, relay: RelayConfig): Promise<string | undefined> {
+    let attempt = 0;
+    let picture = await generatePictureForPost(post, text, relay, attempt, '');
+
+    while (true) {
+        const choice = await select({
+            message: picture ? 'Картинка от Gemini:' : 'Картинка не получена. Что делать?',
+            choices: [
+                ...(picture ? [{ name: '✅ Оставить эту картинку', value: 'keep' }] : []),
+                { name: picture ? '🔄 Другую картинку' : '🔄 Попробовать ещё раз', value: 'again' },
+                { name: '🚫 Без картинки', value: 'none' },
+            ],
+        });
+        if (choice === 'keep') return picture ?? undefined;
+        if (choice === 'none') return undefined;
+
+        const hint = (await input({ message: 'Пожелание к картинке (Enter — без пожеланий, например «без надписей»):' })).trim();
+        attempt++;
+        picture = await generatePictureForPost(post, text, relay, attempt, hint);
+    }
+}
+
 async function chooseMedia(files: string[]): Promise<string | undefined> {
     if (files.length <= 1) return files[0];
 
@@ -279,7 +329,7 @@ async function processPost(post: SourcePost, relay: RelayConfig, accounts: Accou
     if (action === 'stop') return 'stop';
     if (action === 'skip') return 'done';
 
-    const files = mediaCount ? await downloadPostMedia(post, DRAFTS_DIR) : [];
+    let files = mediaCount ? await downloadPostMedia(post, DRAFTS_DIR) : [];
     if (files.length) console.log(`📥 Media saved: ${files.join(', ')}`);
 
     const text = post.text.trim()
@@ -293,7 +343,11 @@ async function processPost(post: SourcePost, relay: RelayConfig, accounts: Accou
         });
     if (text === null) return 'done';
 
-    const media = await chooseMedia(files);
+    // No photo in the original (or only a video, which we do not use): Gemini makes a picture for the text
+    const hasPhoto = files.some(f => /\.jpe?g$/i.test(f));
+    const media = !hasPhoto && text
+        ? await pickGeneratedPicture(post, text, relay)
+        : await chooseMedia(files);
     const draftPath = writeDraft(post, text, media);
     console.log(`📝 Draft saved: ${draftPath}`);
 

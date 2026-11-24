@@ -83,3 +83,49 @@ export async function readUserMessages(page: Page): Promise<string[]> {
     }
     return messages;
 }
+
+/**
+ * Asks Gemini to generate a picture (e.g. "Сгенерируй картинку к этому тексту") and returns its file.
+ * The picture is a blob: URL inside the page, so it is read through the page.
+ */
+export async function generateImage(page: Page, request: string): Promise<{ buffer: Buffer; ext: string }> {
+    const responsesBefore = await page.locator(RESPONSE).count();
+
+    const editor = page.locator(EDITOR).first();
+    await editor.click();
+    await page.keyboard.insertText(request);
+    const sendButton = page.getByRole('button', { name: SEND_BUTTON }).first();
+    if (await sendButton.isVisible().catch(() => false)) await sendButton.click();
+    else await page.keyboard.press('Enter');
+
+    const deadline = Date.now() + GENERATION_TIMEOUT;
+    let idle = 0; // seconds the answer has finished without a picture
+    while (Date.now() < deadline) {
+        const generating = await page.getByRole('button', { name: STOP_BUTTON }).first().isVisible().catch(() => false);
+        const src = (await page.locator(RESPONSE).count()) > responsesBefore
+            ? await page.locator(RESPONSE).last().locator('img').first()
+                .evaluate((img: HTMLImageElement) => (img.naturalWidth > 0 ? img.src : null))
+                .catch(() => null)
+            : null;
+
+        if (src && !generating) {
+            // Redraw the picture on a canvas: fetch() cannot read the page's blob: URL reliably
+            const dataUrl = await page.locator(RESPONSE).last().locator('img').first().evaluate((img: HTMLImageElement) => {
+                const canvas = document.createElement('canvas');
+                canvas.width = img.naturalWidth;
+                canvas.height = img.naturalHeight;
+                canvas.getContext('2d')!.drawImage(img, 0, 0);
+                return canvas.toDataURL('image/png');
+            });
+            return { buffer: Buffer.from(dataUrl.split(',')[1], 'base64'), ext: 'png' };
+        }
+
+        if (!generating && !src) {
+            // The answer is finished but has no picture (e.g. Gemini refused): give the image a few seconds to load
+            idle++;
+            if (idle > 20) throw new Error('Gemini не прислал картинку');
+        }
+        await page.waitForTimeout(1000);
+    }
+    throw new Error('Gemini не прислал картинку вовремя');
+}
