@@ -9,3 +9,4 @@ posts/
 # Telegram relay: user session (secret) and processed-message state
 .telegram_session
 relay_state.json
+.gemini_chat

@@ -16,6 +16,7 @@ import { AccountsConfig, RelayConfig } from './types.js';
 
 const STATE_FILE = path.resolve('./relay_state.json');
 const RULES_FILE = path.resolve('./translation_rules.md');
+const GEMINI_CHAT_FILE = path.resolve('./.gemini_chat'); // URL of the shared translation chat
 const RULES_HEADER = [
     '# Правила перевода и стиля — добавляются к каждому запросу в Gemini.',
     '# Каждое правило — пункт списка "- ...". Файл можно редактировать вручную; строки с # игнорируются.',
@@ -69,12 +70,49 @@ function buildRequest(post: SourcePost, relay: RelayConfig): string {
     return parts.join('\n\n');
 }
 
+let geminiPage: Page | null = null;
+
 /**
- * Offers to save the user's remarks from the Gemini chat (all messages after the translation request)
+ * Returns the Gemini tab with the shared translation chat: keeps it open between posts and reopens
+ * the saved chat after a restart (needs a Google account signed in to Gemini in this Chrome).
+ * With relay.sameChat = false every post gets a new chat.
+ */
+async function getGeminiPage(relay: RelayConfig): Promise<Page> {
+    const sameChat = relay.sameChat !== false;
+    if (sameChat && geminiPage && !geminiPage.isClosed()) {
+        await geminiPage.bringToFront();
+        return geminiPage;
+    }
+    await closeGeminiPage();
+
+    const savedChat = sameChat && fs.existsSync(GEMINI_CHAT_FILE) ? fs.readFileSync(GEMINI_CHAT_FILE, 'utf8').trim() : '';
+    geminiPage = await openGeminiChat(savedChat || relay.geminiUrl || DEFAULT_GEMINI_URL);
+    if (savedChat) {
+        // Gemini redirects to a new chat if the saved one is unavailable (deleted or not signed in)
+        const reopened = geminiPage.url().startsWith(savedChat);
+        console.log(reopened ? '💬 Продолжаю общий чат переводов в Gemini.' : '⚠️ Сохранённый чат Gemini недоступен — начинаю новый.');
+    }
+    return geminiPage;
+}
+
+function rememberGeminiChat(page: Page, relay: RelayConfig) {
+    // A chat gets its own URL (/app/<id>) after the first answer
+    if (relay.sameChat !== false && /\/app\/[\w-]+/.test(page.url())) {
+        fs.writeFileSync(GEMINI_CHAT_FILE, page.url().split('?')[0]);
+    }
+}
+
+async function closeGeminiPage() {
+    await geminiPage?.close().catch(() => undefined);
+    geminiPage = null;
+}
+
+/**
+ * Offers to save the user's remarks from the Gemini chat (user messages after the translation request)
  * as rules for future translations.
  */
-async function offerToSaveRemarks(page: Page | null, extraRemarks: string[]): Promise<void> {
-    const fromChat = page ? (await readUserMessages(page).catch(() => [])).slice(1) : [];
+async function offerToSaveRemarks(page: Page | null, requestIndex: number, extraRemarks: string[]): Promise<void> {
+    const fromChat = page ? (await readUserMessages(page).catch(() => [])).slice(requestIndex + 1) : [];
     const existing = loadRules();
     const remarks = [...new Set([...fromChat, ...extraRemarks])].filter(r => !existing.includes(r));
     if (!remarks.length) return;
@@ -109,11 +147,14 @@ async function reviewInGemini(post: SourcePost, relay: RelayConfig): Promise<str
     const geminiUrl = relay.geminiUrl || DEFAULT_GEMINI_URL;
     let page: Page | null = null;
     let text: string | null = null;
+    let requestIndex = 0; // position of this post's request among the user's messages in the chat
 
     try {
         console.log('\n🌐 Sending the post to Gemini...');
-        page = await openGeminiChat(geminiUrl);
+        page = await getGeminiPage(relay);
+        requestIndex = (await readUserMessages(page)).length;
         text = cleanGeminiText(await askGemini(page, request));
+        rememberGeminiChat(page, relay);
     } catch (error: any) {
         console.warn(`⚠️ Gemini automation failed (${error.message.split('\n')[0]}). Switching to clipboard mode.`);
         clipboardy.writeSync(request);
@@ -158,7 +199,7 @@ async function reviewInGemini(post: SourcePost, relay: RelayConfig): Promise<str
             });
 
             if (action === 'approve' || action === 'skip') {
-                await offerToSaveRemarks(page, terminalRemarks);
+                await offerToSaveRemarks(page, requestIndex, terminalRemarks);
                 return action === 'approve' ? text : null;
             }
             if (action === 'remark' && page) {
@@ -187,7 +228,8 @@ async function reviewInGemini(post: SourcePost, relay: RelayConfig): Promise<str
             }
         }
     } finally {
-        await page?.close().catch(() => undefined);
+        // The shared chat stays open for the next post
+        if (relay.sameChat === false) await closeGeminiPage();
     }
 }
 

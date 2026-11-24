@@ -37,6 +37,7 @@ export interface FacebookGroupConfig {
 export interface RelayConfig {
     channels: string[];     // public source channels: usernames without @ (read via https://t.me/s/<name>)
     geminiUrl?: string;     // chat or Gem URL, default https://gemini.google.com/app
+    sameChat?: boolean;     // translate all posts in one Gemini chat (default true); its URL is kept in .gemini_chat
     prompt?: string;        // text prepended to the source post
     limit?: number;         // max messages per channel per run (default 10)
     latestOnly?: boolean;   // process only the newest post of each channel, skip older ones
