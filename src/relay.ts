@@ -11,12 +11,15 @@ import { printReport, publishToAccounts, selectAccounts } from './runner.js';
 import { downloadPostMedia, fetchNewPosts, getLatestPostId, SourcePost } from './sources/telegramWeb.js';
 import { askGemini, openGeminiChat, readLastAnswer, readUserMessages } from './translators/gemini.js';
 import { disconnectChrome } from './browser.js';
+import { readStore, writeStore } from './store.js';
+import { loadAccounts } from './accounts.js';
 import { notify } from './utils.js';
 import { AccountsConfig, RelayConfig } from './types.js';
 
-const STATE_FILE = path.resolve('./relay_state.json');
-const RULES_FILE = path.resolve('./translation_rules.md');
-const GEMINI_CHAT_FILE = path.resolve('./.gemini_chat'); // URL of the shared translation chat
+// State files are kept by store.ts (local copy + Google Drive when configured)
+const STATE_FILE = 'relay_state.json';
+const RULES_FILE = 'translation_rules.md';
+const GEMINI_CHAT_FILE = '.gemini_chat'; // URL of the shared translation chat
 const RULES_HEADER = [
     '# Правила перевода и стиля — добавляются к каждому запросу в Gemini.',
     '# Каждое правило — пункт списка "- ...". Файл можно редактировать вручную; строки с # игнорируются.',
@@ -32,12 +35,13 @@ const WATCH = process.argv.includes('--watch');
 
 type RelayState = Record<string, number>; // channel -> last processed message id
 
-function loadState(): RelayState {
-    return fs.existsSync(STATE_FILE) ? JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')) : {};
+async function loadState(): Promise<RelayState> {
+    const raw = await readStore(STATE_FILE);
+    return raw ? JSON.parse(raw) : {};
 }
 
-function saveState(state: RelayState) {
-    fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
+async function saveState(state: RelayState) {
+    await writeStore(STATE_FILE, JSON.stringify(state, null, 2));
 }
 
 /**
@@ -54,16 +58,15 @@ function cleanGeminiText(text: string): string {
         .trim();
 }
 
-function loadRules(): string {
-    if (!fs.existsSync(RULES_FILE)) return '';
-    return fs.readFileSync(RULES_FILE, 'utf8')
+async function loadRules(): Promise<string> {
+    return ((await readStore(RULES_FILE)) ?? '')
         .split('\n')
         .filter(line => line.trim() && !line.trim().startsWith('#'))
         .join('\n');
 }
 
-function buildRequest(post: SourcePost, relay: RelayConfig): string {
-    const rules = loadRules();
+async function buildRequest(post: SourcePost, relay: RelayConfig): Promise<string> {
+    const rules = await loadRules();
     const parts = [relay.prompt || DEFAULT_PROMPT];
     if (rules) parts.push(`Обязательно соблюдай мои правила перевода и стиля:\n${rules}`, 'Текст:');
     parts.push(post.text);
@@ -85,7 +88,7 @@ async function getGeminiPage(relay: RelayConfig): Promise<Page> {
     }
     await closeGeminiPage();
 
-    const savedChat = sameChat && fs.existsSync(GEMINI_CHAT_FILE) ? fs.readFileSync(GEMINI_CHAT_FILE, 'utf8').trim() : '';
+    const savedChat = sameChat ? ((await readStore(GEMINI_CHAT_FILE)) ?? '').trim() : '';
     geminiPage = await openGeminiChat(savedChat || relay.geminiUrl || DEFAULT_GEMINI_URL);
     if (savedChat) {
         // Gemini redirects to a new chat if the saved one is unavailable (deleted or not signed in)
@@ -95,10 +98,10 @@ async function getGeminiPage(relay: RelayConfig): Promise<Page> {
     return geminiPage;
 }
 
-function rememberGeminiChat(page: Page, relay: RelayConfig) {
+async function rememberGeminiChat(page: Page, relay: RelayConfig) {
     // A chat gets its own URL (/app/<id>) after the first answer
     if (relay.sameChat !== false && /\/app\/[\w-]+/.test(page.url())) {
-        fs.writeFileSync(GEMINI_CHAT_FILE, page.url().split('?')[0]);
+        await writeStore(GEMINI_CHAT_FILE, page.url().split('?')[0]);
     }
 }
 
@@ -113,7 +116,7 @@ async function closeGeminiPage() {
  */
 async function offerToSaveRemarks(page: Page | null, requestIndex: number, extraRemarks: string[]): Promise<void> {
     const fromChat = page ? (await readUserMessages(page).catch(() => [])).slice(requestIndex + 1) : [];
-    const existing = loadRules();
+    const existing = await loadRules();
     const remarks = [...new Set([...fromChat, ...extraRemarks])].filter(r => !existing.includes(r));
     if (!remarks.length) return;
 
@@ -123,9 +126,10 @@ async function offerToSaveRemarks(page: Page | null, requestIndex: number, extra
     });
     if (!toSave.length) return;
 
-    const content = fs.existsSync(RULES_FILE) ? fs.readFileSync(RULES_FILE, 'utf8').replace(/\n*$/, '\n') : RULES_HEADER;
+    const current = await readStore(RULES_FILE);
+    const content = current ? current.replace(/\n*$/, '\n') : RULES_HEADER;
     const bullets = toSave.map(r => `- ${r.replace(/\n/g, '\n  ')}`).join('\n');
-    fs.writeFileSync(RULES_FILE, `${content}${bullets}\n`);
+    await writeStore(RULES_FILE, `${content}${bullets}\n`);
     console.log(`📚 Сохранено правил: ${toSave.length} → ${path.basename(RULES_FILE)}`);
 }
 
@@ -142,7 +146,7 @@ function printPost(title: string, text: string) {
  * Returns the approved text or null if the post was skipped.
  */
 async function reviewInGemini(post: SourcePost, relay: RelayConfig): Promise<string | null> {
-    const request = buildRequest(post, relay);
+    const request = await buildRequest(post, relay);
     const terminalRemarks: string[] = [];
     const geminiUrl = relay.geminiUrl || DEFAULT_GEMINI_URL;
     let page: Page | null = null;
@@ -154,7 +158,7 @@ async function reviewInGemini(post: SourcePost, relay: RelayConfig): Promise<str
         page = await getGeminiPage(relay);
         requestIndex = (await readUserMessages(page)).length;
         text = cleanGeminiText(await askGemini(page, request));
-        rememberGeminiChat(page, relay);
+        await rememberGeminiChat(page, relay);
     } catch (error: any) {
         console.warn(`⚠️ Gemini automation failed (${error.message.split('\n')[0]}). Switching to clipboard mode.`);
         clipboardy.writeSync(request);
@@ -327,7 +331,7 @@ async function processChannel(channel: string, state: RelayState, relay: RelayCo
     if (WATCH && state[channel] === undefined) {
         // First time watching this chat: don't dump its history, start from the current message
         state[channel] = await getLatestPostId(channel);
-        saveState(state);
+        await saveState(state);
         console.log(`📌 @${channel}: watching for new posts from now on`);
         return 'done';
     }
@@ -360,14 +364,14 @@ async function processChannel(channel: string, state: RelayState, relay: RelayCo
         if (result === 'stop') return 'stop';
 
         state[channel] = post.id;
-        saveState(state);
+        await saveState(state);
     }
 
     // latestOnly skips the other fetched posts — don't fetch them again next time
     const lastFetchedId = Math.max(0, ...fetched.map(p => p.id));
     if (lastFetchedId > (state[channel] || 0)) {
         state[channel] = lastFetchedId;
-        saveState(state);
+        await saveState(state);
     }
     return 'done';
 }
@@ -418,14 +422,14 @@ function watchChannels(state: RelayState, relay: RelayConfig, accounts: Accounts
 }
 
 async function main() {
-    const accounts: AccountsConfig = JSON.parse(fs.readFileSync(path.resolve('./accounts.json'), 'utf8'));
+    const accounts = await loadAccounts();
     const relay = accounts.relay;
     if (!relay || !relay.channels?.length) {
         console.error('❌ Error: "relay" section with "channels" is missing in accounts.json!');
         process.exit(1);
     }
 
-    const state = loadState();
+    const state = await loadState();
 
     try {
         if (WATCH) {

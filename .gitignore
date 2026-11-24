@@ -10,3 +10,4 @@ posts/
 .telegram_session
 relay_state.json
 .gemini_chat
+state-backup/

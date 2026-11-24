@@ -1,9 +1,7 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import process from 'node:process';
 import { parsePost } from './parser.js';
 import { printReport, publishToAccounts, selectAccounts } from './runner.js';
-import { AccountsConfig } from './types.js';
+import { loadAccounts } from './accounts.js';
 import { disconnectChrome } from './browser.js';
 
 async function main() {
@@ -13,7 +11,7 @@ async function main() {
         process.exit(1);
     }
 
-    const accounts: AccountsConfig = JSON.parse(fs.readFileSync(path.resolve('./accounts.json'), 'utf8'));
+    const accounts = await loadAccounts();
 
     try {
         const selectedAccounts = await selectAccounts(accounts);
