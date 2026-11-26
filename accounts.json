@@ -1,21 +1,51 @@
 {
   "telegram": [
-    { "name": "Мысли перед Субботой", "tokenEnv": "TELEGRAM_BOT_TOKEN" , "chatId": "-1001274139840", "channelName": "tora_maximcatz"  },
-    { "name": "Зеут (Моше Фейглин/Аркадий Муттер)", "tokenEnv": "TELEGRAM_BOT_TOKEN", "chatId": "-1001946383896", "channelName": "arcady_mutter" },
-    { "name": "Test channel", "tokenEnv": "TELEGRAM_BOT_TOKEN", "chatId": "-1004313397081", "channelName": "zehut_ru" }
+    {
+      "name": "Мысли перед Субботой",
+      "tokenEnv": "TELEGRAM_BOT_TOKEN",
+      "chatId": "-1001274139840",
+      "channelName": "tora_maximcatz"
+    },
+    {
+      "name": "Зеут (Моше Фейглин/Аркадий Муттер)",
+      "tokenEnv": "TELEGRAM_BOT_TOKEN",
+      "chatId": "-1001946383896",
+      "channelName": "arcady_mutter"
+    },
+    {
+      "name": "Test channel",
+      "tokenEnv": "TELEGRAM_BOT_TOKEN",
+      "chatId": "-1004313397081",
+      "channelName": "zehut_ru"
+    }
   ],
   "facebook": [
-    { "name": "Партия ЗЕУТ во главе с Моше Фейглиным", "pageId": "988300087883581", "tokenEnv": "FB_PAGE_TOKEN" },
-    { "name": "Test page", "pageId": "1178447615353584", "tokenEnv": "FB_TEST_PAGE_TOKEN" }
+    {
+      "name": "Партия ЗЕУТ во главе с Моше Фейглиным",
+      "pageId": "988300087883581",
+      "tokenEnv": "FB_PAGE_TOKEN"
+    },
+    {
+      "name": "Test page",
+      "pageId": "1178447615353584",
+      "tokenEnv": "FB_TEST_PAGE_TOKEN"
+    }
   ],
   "youtube": [
-    { "name": "Партия Зеут - Еврейская Идентичность", "channelHandle": "@Zehut-Ru" }
+    {
+      "name": "Партия Зеут - Еврейская Идентичность",
+      "channelHandle": "@Zehut-Ru"
+    }
   ],
   "whatsapp": [
     {
       "name": "דוברי רוסית",
       "inviteLink1": "https://chat.whatsapp.com/BUKzuj87afeBBzE7cxS3MX",
       "inviteLink": "whatsapp://chat?code=BUKzuj87afeBBzE7cxS3MX"
+    },
+    {
+      "name": "Test publish",
+      "inviteLink": "https://chat.whatsapp.com/KnZOZn6tE39Hzv7fBl82lj"
     }
   ],
   "groups": [
@@ -26,7 +56,9 @@
     }
   ],
   "relay": {
-    "channels": ["m_feiglin"],
+    "channels": [
+      "m_feiglin"
+    ],
     "geminiUrl": "https://gemini.google.com/app",
     "prompt": "Переведи на русский язык. Сохрани абзацы, эмодзи и ссылки. Верни только перевод без пояснений:",
     "latestOnly": false,

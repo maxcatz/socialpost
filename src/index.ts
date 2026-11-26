@@ -3,6 +3,7 @@ import { parsePost } from './parser.js';
 import { printReport, publishToAccounts, selectAccounts } from './runner.js';
 import { loadAccounts } from './accounts.js';
 import { disconnectChrome } from './browser.js';
+import { disconnectTelegram } from './sources/telegramApi.js';
 
 async function main() {
     const filePath = process.argv[2];
@@ -25,6 +26,7 @@ async function main() {
         else console.error('\n❌ A critical error occurred:', error.message);
     } finally {
         await disconnectChrome();
+        await disconnectTelegram();
     }
 }
 

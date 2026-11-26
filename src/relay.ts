@@ -9,8 +9,9 @@ import { Page } from 'playwright-core';
 import { parsePost } from './parser.js';
 import { printReport, publishToAccounts, selectAccounts } from './runner.js';
 import { downloadPostMedia, fetchNewPosts, getLatestPostId, SourcePost } from './sources/telegramWeb.js';
-import { askGemini, generateImage, openGeminiChat, readLastAnswer, readUserMessages } from './translators/gemini.js';
+import { askGemini, openGeminiChat, readLastAnswer, readUserMessages } from './translators/gemini.js';
 import { disconnectChrome } from './browser.js';
+import { disconnectTelegram } from './sources/telegramApi.js';
 import { readStore, writeStore } from './store.js';
 import { loadAccounts } from './accounts.js';
 import { notify } from './utils.js';
@@ -237,56 +238,6 @@ async function reviewInGemini(post: SourcePost, relay: RelayConfig): Promise<str
     }
 }
 
-/**
- * For posts without a photo (no media, or a video we do not use): asks Gemini in the same chat
- * to generate a picture for the approved text. Returns the saved file, or null if it failed.
- */
-async function generatePictureForPost(post: SourcePost, text: string, relay: RelayConfig, attempt: number, hint: string): Promise<string | null> {
-    try {
-        console.log('\n🎨 Прошу Gemini сгенерировать картинку к тексту...');
-        const page = await getGeminiPage(relay);
-        const base = attempt === 0 ? 'Сгенерируй картинку к этому тексту' : 'Сгенерируй другую картинку к этому тексту';
-        const request = `${base}${hint ? `. Пожелание к картинке: ${hint}` : ''}:\n\n${text}`;
-        const image = await generateImage(page, request);
-        await rememberGeminiChat(page, relay);
-        if (relay.sameChat === false) await closeGeminiPage();
-
-        fs.mkdirSync(DRAFTS_DIR, { recursive: true });
-        const filePath = path.join(DRAFTS_DIR, `${post.channel}_${post.id}_ai.${image.ext}`);
-        fs.writeFileSync(filePath, image.buffer);
-        console.log(`🖼️ Картинка сохранена: ${filePath}`);
-        return filePath;
-    } catch (error: any) {
-        console.warn(`⚠️ Не удалось получить картинку от Gemini (${error.message.split('\n')[0]}).`);
-        return null;
-    }
-}
-
-/**
- * Lets the user keep the generated picture, ask Gemini for another one (optionally with a wish), or drop it.
- */
-async function pickGeneratedPicture(post: SourcePost, text: string, relay: RelayConfig): Promise<string | undefined> {
-    let attempt = 0;
-    let picture = await generatePictureForPost(post, text, relay, attempt, '');
-
-    while (true) {
-        const choice = await select({
-            message: picture ? 'Картинка от Gemini:' : 'Картинка не получена. Что делать?',
-            choices: [
-                ...(picture ? [{ name: '✅ Оставить эту картинку', value: 'keep' }] : []),
-                { name: picture ? '🔄 Другую картинку' : '🔄 Попробовать ещё раз', value: 'again' },
-                { name: '🚫 Без картинки', value: 'none' },
-            ],
-        });
-        if (choice === 'keep') return picture ?? undefined;
-        if (choice === 'none') return undefined;
-
-        const hint = (await input({ message: 'Пожелание к картинке (Enter — без пожеланий, например «без надписей»):' })).trim();
-        attempt++;
-        picture = await generatePictureForPost(post, text, relay, attempt, hint);
-    }
-}
-
 async function chooseMedia(files: string[]): Promise<string | undefined> {
     if (files.length <= 1) return files[0];
 
@@ -305,7 +256,12 @@ function writeDraft(post: SourcePost, text: string, media?: string): string {
     const filePath = path.join(DRAFTS_DIR, `${post.channel}_${post.id}.md`);
 
     const data: Record<string, string> = { source: post.url };
-    if (media) data.media = `./${media}`;
+    if (media) {
+        data.media = `./${media}`;
+        // Original message of the media: big videos are forwarded from it instead of being uploaded again
+        const item = post.media.find(m => m.file === media);
+        if (item?.messageId) data.media_source = `${post.channel}/${item.messageId}`;
+    }
 
     fs.writeFileSync(filePath, matter.stringify(`\n${text}\n`, data));
     return filePath;
@@ -329,8 +285,19 @@ async function processPost(post: SourcePost, relay: RelayConfig, accounts: Accou
     if (action === 'stop') return 'stop';
     if (action === 'skip') return 'done';
 
-    let files = mediaCount ? await downloadPostMedia(post, DRAFTS_DIR) : [];
-    if (files.length) console.log(`📥 Media saved: ${files.join(', ')}`);
+    // Media downloads in the background while the post is translated (a big video can take minutes).
+    // Its messages are collected and printed afterwards, so they do not break the prompts.
+    const downloadLog: string[] = [];
+    let downloadDone = !mediaCount;
+    const filesPromise: Promise<string[]> = mediaCount
+        ? downloadPostMedia(post, DRAFTS_DIR, (m) => downloadLog.push(m))
+            .catch((error: any) => {
+                downloadLog.push(`⚠️ Не удалось скачать медиа: ${error.message.split('\n')[0]}`);
+                return [];
+            })
+            .finally(() => { downloadDone = true; })
+        : Promise.resolve([]);
+    if (mediaCount) console.log('📥 Медиа скачивается в фоне...');
 
     const text = post.text.trim()
         ? await reviewInGemini(post, relay)
@@ -343,11 +310,12 @@ async function processPost(post: SourcePost, relay: RelayConfig, accounts: Accou
         });
     if (text === null) return 'done';
 
-    // No photo in the original (or only a video, which we do not use): Gemini makes a picture for the text
-    const hasPhoto = files.some(f => /\.jpe?g$/i.test(f));
-    const media = !hasPhoto && text
-        ? await pickGeneratedPicture(post, text, relay)
-        : await chooseMedia(files);
+    if (!downloadDone) console.log('⏳ Жду окончания скачивания медиа...');
+    const files = await filesPromise;
+    downloadLog.forEach((m) => console.log(m));
+    if (files.length) console.log(`📥 Media saved: ${files.join(', ')}`);
+
+    const media = await chooseMedia(files);
     const draftPath = writeDraft(post, text, media);
     console.log(`📝 Draft saved: ${draftPath}`);
 
@@ -501,6 +469,7 @@ async function main() {
         else console.error('\n❌ A critical error occurred:', error.message);
     } finally {
         await disconnectChrome();
+        await disconnectTelegram();
         process.exit(0);
     }
 }

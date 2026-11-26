@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { downloadVideoByMessage } from './telegramApi.js';
 
 /**
  * Reads public Telegram channels through their web preview (https://t.me/s/<channel>),
@@ -10,7 +11,9 @@ const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/
 
 export interface SourceMedia {
     type: 'photo' | 'video';
-    url?: string;   // direct file URL; missing for videos that are too big for the web preview
+    url?: string;      // direct file URL; missing for videos that are too big for the web preview
+    messageId?: number; // message in the channel, used to download through the Telegram API
+    file?: string;      // local path after downloadPostMedia
 }
 
 export interface SourcePost {
@@ -83,10 +86,10 @@ function parsePost(channel: string, block: string): SourcePost | null {
         if (mediaId) ids.push(Number(mediaId));
         if (m[1] === 'photo_wrap') {
             const url = m[0].match(/background-image:url\('([^']+)'\)/)?.[1];
-            media.push({ type: 'photo', url });
+            media.push({ type: 'photo', url, messageId: mediaId ? Number(mediaId) : undefined });
         } else {
             const url = m[0].match(/<video[^>]*\ssrc="([^"]+)"/)?.[1];
-            media.push({ type: 'video', url: url ? decodeEntities(url) : undefined });
+            media.push({ type: 'video', url: url ? decodeEntities(url) : undefined, messageId: mediaId ? Number(mediaId) : undefined });
         }
     }
 
@@ -163,18 +166,32 @@ export async function getLatestPostId(channel: string): Promise<number> {
  * Downloads photos/videos of the post into dir. Returns relative paths of saved files.
  * Videos that are too big for the web preview are reported and skipped.
  */
-export async function downloadPostMedia(post: SourcePost, dir: string): Promise<string[]> {
+export async function downloadPostMedia(post: SourcePost, dir: string, log: (message: string) => void = console.log): Promise<string[]> {
     fs.mkdirSync(dir, { recursive: true });
     const files: string[] = [];
 
     for (const [index, item] of post.media.entries()) {
         if (!item.url) {
-            console.log(`⚠️ Видео слишком большое для веб-версии Telegram — скачайте его вручную: ${post.url}`);
+            // Too big for the web preview: take it through the Telegram account (see telegramApi.ts)
+            const filePath = path.join(dir, `${post.channel}_${item.messageId ?? post.id}${post.media.length > 1 ? `_${index + 1}` : ''}.mp4`);
+            if (item.type === 'video' && item.messageId) {
+                try {
+                    if (await downloadVideoByMessage(post.channel, item.messageId, filePath)) {
+                        log(`🎬 Видео скачано через Telegram API: ${filePath}`);
+                        files.push(filePath);
+                        item.file = filePath;
+                        continue;
+                    }
+                } catch (error: any) {
+                    log(`⚠️ Через Telegram API не удалось скачать видео (${error.message.split('\n')[0]}).`);
+                }
+            }
+            log(`⚠️ Видео не скачано — скачайте его вручную: ${post.url}`);
             continue;
         }
         const res = await fetch(item.url, { headers: { 'User-Agent': USER_AGENT } });
         if (!res.ok) {
-            console.log(`⚠️ Не удалось скачать ${item.type} (HTTP ${res.status}): ${post.url}`);
+            log(`⚠️ Не удалось скачать ${item.type} (HTTP ${res.status}): ${post.url}`);
             continue;
         }
         const ext = item.type === 'photo' ? 'jpg' : 'mp4';
@@ -182,6 +199,7 @@ export async function downloadPostMedia(post: SourcePost, dir: string): Promise<
         const filePath = path.join(dir, `${post.channel}_${post.id}${suffix}.${ext}`);
         fs.writeFileSync(filePath, Buffer.from(await res.arrayBuffer()));
         files.push(filePath);
+        item.file = filePath;
     }
 
     return files;

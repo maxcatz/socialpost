@@ -44,6 +44,7 @@ export function parsePost(filePath: string): PostData {
         media: resolvedMedia,
         mimeType,
         facebook_tags: data.facebook_tags,
+        mediaSource: data.media_source,
         content: finalPostText
     };
 }

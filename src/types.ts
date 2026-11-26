@@ -3,6 +3,7 @@ export interface PostData {
     media?: string;
     mimeType?: string;
     facebook_tags?: string;
+    mediaSource?: string; // "channel/messageId" of the original Telegram message with the media
     content: string; // The post text with the title already included
 }
 

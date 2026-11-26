@@ -10,9 +10,11 @@ import { offerMediaInClipboard, publishManual, RunSafe } from './common.js';
 const CHAT_LIST = '#pane-side';
 const QR_CODE = 'canvas[aria-label]';
 const COMPOSE_BOX = 'footer div[contenteditable="true"]';
-const CAPTION_BOX = '[contenteditable="true"]:not(footer [contenteditable]):not(#side [contenteditable])';
 const ATTACH_BUTTON = /^(Attach|Прикрепить|צירוף|צרף)$/i;
-const MEDIA_INPUT = 'input[type="file"][accept*="image"]';
+const PREVIEW_IMAGE = 'img[src^="blob:"]';
+const PHOTO_VIDEO_ITEM = /^(Photos & videos|Фото и видео)$/i;
+// Caption field of the media editor: an editable box outside the chat footer (the message box is in the footer)
+const CAPTION_EDITOR = '[contenteditable="true"]:not(footer [contenteditable="true"]):not(#side [contenteditable="true"])';
 // Longer texts go as a separate message, the media follows without a caption
 const CAPTION_LIMIT = 1024;
 const LOGIN_TIMEOUT = 3 * 60_000;
@@ -56,13 +58,24 @@ export class WhatsAppPublisher {
         await page.goto(groupUrl, { waitUntil: 'domcontentloaded' });
         await page.bringToFront();
         await WhatsAppPublisher.waitForChat(page, groupUrl);
+        await WhatsAppPublisher.closePopups(page);
 
         const media = post.media;
-        if (media && post.content.length <= CAPTION_LIMIT) {
-            // Media with the text as its caption — one message
-            await WhatsAppPublisher.attachMedia(page, post);
-            await WhatsAppPublisher.typeText(page, page.locator(CAPTION_BOX).last(), post.content);
-            console.log('✅ Медиа прикреплено, текст вставлен в подпись.');
+        const isImage = Boolean(media && post.mimeType?.startsWith('image/'));
+
+        if (isImage && post.content.length <= CAPTION_LIMIT) {
+            // Same as by hand: the text goes into the message box, then the picture is pasted.
+            // WhatsApp opens the picture editor with the text as its caption; you press Send.
+            await WhatsAppPublisher.typeText(page, page.locator(COMPOSE_BOX).first(), post.content);
+            await WhatsAppPublisher.pasteImage(page, post);
+            console.log('✅ Картинка с текстом в подписи открыта в WhatsApp. Проверьте и нажмите «Отправить».');
+            return;
+        }
+
+        if (media && !isImage && post.content.length <= CAPTION_LIMIT) {
+            // Video: "Photos & videos" from the attach menu, the text goes into the caption
+            await WhatsAppPublisher.attachVideo(page, post, post.content);
+            console.log('✅ Видео открыто в WhatsApp с подписью. Проверьте и нажмите «Отправить».');
             return;
         }
 
@@ -70,10 +83,48 @@ export class WhatsAppPublisher {
         console.log('✅ Текст вставлен.');
         if (!media) return;
 
-        console.log(`ℹ️ Текст длиннее ${CAPTION_LIMIT} символов — медиа будет отдельным сообщением.`);
-        await input({ message: 'Отправьте текст в WhatsApp, затем нажмите Enter здесь — прикреплю медиа...' });
-        await WhatsAppPublisher.attachMedia(page, post);
-        console.log('✅ Медиа прикреплено.');
+        if (!isImage) {
+            console.log(`ℹ️ Текст длиннее ${CAPTION_LIMIT} символов — видео будет отдельным сообщением.`);
+            await input({ message: 'Отправьте текст в WhatsApp, затем нажмите Enter здесь — прикреплю видео...' });
+            await WhatsAppPublisher.attachVideo(page, post, '');
+            console.log('✅ Видео открыто в WhatsApp. Проверьте и нажмите «Отправить».');
+            return;
+        }
+
+        console.log(`ℹ️ Текст длиннее ${CAPTION_LIMIT} символов — картинка будет отдельным сообщением.`);
+        await input({ message: 'Отправьте текст в WhatsApp, затем нажмите Enter здесь — вставлю картинку...' });
+        await WhatsAppPublisher.pasteImage(page, post);
+        console.log('✅ Картинка открыта в WhatsApp. Проверьте и нажмите «Отправить».');
+    }
+
+    /**
+     * Closes promo dialogs that cover the chat (e.g. "Now you can make voice and video calls").
+     */
+    private static async closePopups(page: Page): Promise<void> {
+        for (const close of await page.locator('[role="dialog"] [aria-label="Close"]').all()) {
+            await close.click({ timeout: 2_000 }).catch(() => undefined);
+            await page.waitForTimeout(300);
+        }
+    }
+
+    /**
+     * Puts the picture into the clipboard and pastes it into the message box. WhatsApp shows the picture
+     * editor (its preview is a blob: image). Does not send anything.
+     */
+    private static async pasteImage(page: Page, post: PostData): Promise<void> {
+        const copied = await copyImageToClipboard(post.media!, post.mimeType!).catch(() => false);
+        if (!copied) throw new Error('не удалось скопировать картинку в буфер (только macOS)');
+
+        const previewsBefore = await page.locator(PREVIEW_IMAGE).count();
+        await page.locator(COMPOSE_BOX).first().click({ timeout: 5_000 });
+        await page.keyboard.press(process.platform === 'darwin' ? 'Meta+V' : 'Control+V');
+        await page.waitForFunction(
+            (count: number) => document.querySelectorAll('img[src^="blob:"]').length > count,
+            previewsBefore,
+            { timeout: 15_000 }
+        ).catch(() => {
+            throw new Error('редактор картинки в WhatsApp не открылся');
+        });
     }
 
     /**
@@ -112,35 +163,25 @@ export class WhatsAppPublisher {
     }
 
     /**
-     * Attaches the media through the "Attach → Photos & videos" file input, falling back to pasting
-     * an image from the clipboard. Resolves when the media editor with the caption box is open.
+     * Attaches a video the way a person does: attach menu -> "Photos & videos" -> file dialog.
+     * (Putting the file into WhatsApp's hidden inputs is ignored for videos.) Optional caption goes into
+     * the caption box of the editor. Does not send anything.
      */
-    private static async attachMedia(page: Page, post: PostData): Promise<void> {
-        const mediaPath = post.media!;
-        const caption = page.locator(CAPTION_BOX);
-        const editorOpened = async () => {
-            await caption.last().waitFor({ state: 'visible', timeout: post.mimeType?.startsWith('video/') ? 60_000 : 15_000 });
-        };
+    private static async attachVideo(page: Page, post: PostData, caption: string): Promise<void> {
+        const chooser = page.waitForEvent('filechooser', { timeout: 15_000 });
+        await page.locator('footer').getByRole('button', { name: ATTACH_BUTTON }).first().click({ timeout: 5_000 });
+        await page.getByText(PHOTO_VIDEO_ITEM).first().click({ timeout: 5_000 });
+        await (await chooser).setFiles(post.media!);
 
-        try {
-            await page.locator('footer').getByRole('button', { name: ATTACH_BUTTON }).first().click({ timeout: 5_000 });
-            const fileInput = page.locator(MEDIA_INPUT).first();
-            await fileInput.waitFor({ state: 'attached', timeout: 5_000 });
-            await fileInput.setInputFiles(mediaPath);
-            await editorOpened();
-            return;
-        } catch {
-            await page.keyboard.press('Escape').catch(() => undefined);
+        await page.waitForFunction(() => document.querySelectorAll('video[src^="blob:"]').length > 0, null, { timeout: 60_000 })
+            .catch(() => {
+                throw new Error('редактор видео в WhatsApp не открылся');
+            });
+
+        if (caption) {
+            await page.locator(CAPTION_EDITOR).last().click({ timeout: 5_000 });
+            await page.keyboard.insertText(caption);
         }
-
-        if (post.mimeType?.startsWith('image/') && (await copyImageToClipboard(mediaPath, post.mimeType).catch(() => false))) {
-            await page.locator(COMPOSE_BOX).first().click({ timeout: 5_000 });
-            await page.keyboard.press(process.platform === 'darwin' ? 'Meta+V' : 'Control+V');
-            await editorOpened();
-            return;
-        }
-
-        throw new Error('не удалось прикрепить медиа');
     }
 
     private static async publishManually(post: PostData, account: WhatsAppConfig): Promise<PublishResult> {
