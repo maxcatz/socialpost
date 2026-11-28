@@ -158,7 +158,12 @@ async function reviewInGemini(post: SourcePost, relay: RelayConfig): Promise<str
         console.log('\n🌐 Sending the post to Gemini...');
         page = await getGeminiPage(relay);
         requestIndex = (await readUserMessages(page)).length;
+        const chatBefore = page.url().split('?')[0];
         text = cleanGeminiText(await askGemini(page, request));
+        const chatAfter = page.url().split('?')[0];
+        if (/\/app\/[\w-]+/.test(chatBefore) && chatAfter !== chatBefore) {
+            console.warn(`⚠️ Gemini начал новый чат вместо общего (${chatAfter}).`);
+        }
         await rememberGeminiChat(page, relay);
     } catch (error: any) {
         console.warn(`⚠️ Gemini automation failed (${error.message.split('\n')[0]}). Switching to clipboard mode.`);
